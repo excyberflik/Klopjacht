@@ -25,6 +25,10 @@ const socketHandler = require('./socket/socketHandler');
 // Import database initialization
 const initDatabase = require('./config/database');
 
+// Import models for game expiration checking
+const Game = require('./models/Game');
+const Player = require('./models/Player');
+
 const app = express();
 const server = createServer(app);
 
@@ -105,6 +109,70 @@ app.use('*', (req, res) => {
   });
 });
 
+// Automatic game expiration checker
+async function checkExpiredGames() {
+  try {
+    const now = new Date();
+    
+    // Find active games that have exceeded their duration
+    const expiredGames = await Game.find({
+      status: 'active',
+      startTime: { $exists: true },
+      $expr: {
+        $lt: [
+          { $add: ['$startTime', { $multiply: ['$duration', 60000] }] }, // startTime + duration in ms
+          now
+        ]
+      }
+    });
+
+    for (const game of expiredGames) {
+      console.log(`⏰ Game ${game.name} (${game.gameCode}) has expired, ending automatically...`);
+      
+      // End the game
+      game.status = 'completed';
+      game.results.gameEndReason = 'time_expired';
+      
+      // Calculate results
+      const fugitives = await Player.find({ game: game._id, role: 'fugitive' });
+      const escapedFugitives = fugitives.filter(f => f.status === 'escaped');
+      const caughtFugitives = fugitives.filter(f => f.status === 'caught');
+
+      game.results.fugitivesEscaped = escapedFugitives.map(f => f._id);
+      game.results.fugitivesCaught = caughtFugitives.map(f => ({
+        player: f._id,
+        caughtAt: f.updatedAt,
+        location: f.currentLocation
+      }));
+
+      // Determine winner based on time expiration
+      if (escapedFugitives.length > 0) {
+        game.results.winner = 'fugitives'; // Fugitives win if they survived until time expired
+      } else if (caughtFugitives.length === fugitives.length) {
+        game.results.winner = 'hunters';
+      } else {
+        game.results.winner = 'fugitives'; // Default to fugitives if time expired
+      }
+
+      await game.save();
+
+      // Update all players to completed status
+      await Player.updateMany(
+        { game: game._id },
+        { status: 'completed' }
+      );
+
+      console.log(`✅ Game ${game.name} ended due to time expiration. Winner: ${game.results.winner}`);
+    }
+
+    if (expiredGames.length > 0) {
+      console.log(`⏰ Processed ${expiredGames.length} expired game(s)`);
+    }
+  } catch (error) {
+    console.error('❌ Error checking expired games:', error);
+  }
+}
+
 // Database connection and server startup
 const PORT = process.env.PORT || 5000;
 
@@ -117,6 +185,10 @@ async function startServer() {
     
     // Initialize database (create super admin, etc.)
     await initDatabase();
+    
+    // Start automatic game expiration checker (runs every minute)
+    setInterval(checkExpiredGames, 60000); // Check every 60 seconds
+    console.log('⏰ Game expiration checker started (runs every 60 seconds)');
     
     // Start server
     server.listen(PORT, () => {

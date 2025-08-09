@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_ENDPOINTS } from '../config/api';
 
 interface PredefinedPlayer {
   id: string;
@@ -17,6 +18,7 @@ interface GameInfo {
   playerCount: number;
   maxPlayers: number;
   availablePlayers: PredefinedPlayer[];
+  allPlayers: (PredefinedPlayer & { isJoined: boolean })[];
 }
 
 const JoinGamePage = () => {
@@ -33,7 +35,7 @@ const JoinGamePage = () => {
     const fetchGameInfo = async () => {
       if (gameCode.length === 6) {
         try {
-          const response = await fetch(`http://localhost:5000/api/games/code/${gameCode.toUpperCase()}`);
+          const response = await fetch(API_ENDPOINTS.GAME_BY_CODE(gameCode.toUpperCase()));
           if (response.ok) {
             const data = await response.json();
             setGameInfo(data.game);
@@ -70,8 +72,8 @@ const JoinGamePage = () => {
       return;
     }
 
-    if (!gameInfo.availablePlayers || gameInfo.availablePlayers.length === 0) {
-      setError('No player slots available for this game. Please contact the game lead.');
+    if (!gameInfo.allPlayers || gameInfo.allPlayers.length === 0) {
+      setError('No player slots found for this game. Please contact the game lead.');
       return;
     }
 
@@ -79,7 +81,7 @@ const JoinGamePage = () => {
     setError('');
 
     try {
-      const selectedPlayer = gameInfo.availablePlayers.find(p => p.id === selectedPredefinedPlayer);
+      const selectedPlayer = gameInfo.allPlayers.find(p => p.id === selectedPredefinedPlayer);
       if (!selectedPlayer) {
         setError('Selected player slot is no longer available');
         setLoading(false);
@@ -98,7 +100,7 @@ const JoinGamePage = () => {
 
       console.log('Attempting to join game:', requestBody);
       
-      const response = await fetch('http://localhost:5000/api/players/join', {
+      const response = await fetch(API_ENDPOINTS.PLAYER_JOIN, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,7 +216,7 @@ const JoinGamePage = () => {
           )}
 
           {/* Player Name Selection */}
-          {gameInfo && gameInfo.availablePlayers && gameInfo.availablePlayers.length > 0 ? (
+          {gameInfo && gameInfo.allPlayers && gameInfo.allPlayers.length > 0 ? (
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '1.1rem', fontWeight: 'bold' }}>
                 Select Your Name:
@@ -234,32 +236,23 @@ const JoinGamePage = () => {
                 }}
               >
                 <option value="">-- Select your assigned name --</option>
-                {gameInfo.availablePlayers.map((player) => (
+                {gameInfo.allPlayers.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} ({player.role}){player.team ? ` - Team: ${player.team}` : ''}
+                    {player.name} ({player.role}){player.team ? ` - Team: ${player.team}` : ''} {player.isJoined ? '- JOINED' : '- AVAILABLE'}
                   </option>
                 ))}
               </select>
-              <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.5rem' }}>
-                Available slots: {gameInfo.availablePlayers.length}
-              </p>
+              <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.5rem' }}>
+                <p style={{ margin: '0.25rem 0' }}>
+                  Available slots: {gameInfo.availablePlayers?.length || 0} | 
+                  Already joined: {gameInfo.allPlayers.filter(p => p.isJoined).length}
+                </p>
+                <p style={{ margin: '0.25rem 0', color: '#4CAF50' }}>
+                  ✓ You can rejoin even if you've already joined before
+                </p>
+              </div>
             </div>
-          ) : gameInfo && gameInfo.availablePlayers && gameInfo.availablePlayers.length === 0 ? (
-            <div style={{ 
-              marginBottom: '2rem', 
-              padding: '1rem', 
-              backgroundColor: '#ff4444', 
-              borderRadius: '0.5rem',
-              textAlign: 'center'
-            }}>
-              <p style={{ margin: '0', color: '#ffffff', fontWeight: 'bold' }}>
-                No player slots available
-              </p>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', color: '#ffffff' }}>
-                All player slots have been taken or the game lead hasn't created any slots yet.
-              </p>
-            </div>
-          ) : gameInfo ? (
+          ) : gameInfo && gameInfo.allPlayers && gameInfo.allPlayers.length === 0 ? (
             <div style={{ 
               marginBottom: '2rem', 
               padding: '1rem', 

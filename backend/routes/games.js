@@ -266,6 +266,7 @@ router.post('/:id/tasks', authenticateToken, requireOwnershipOrAdmin(), taskVali
       gameId: game._id,
       taskId: `task_${taskNumber}`,
       taskNumber,
+      question: task.question,
       url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/task/${game._id}/${taskNumber}`
     };
 
@@ -341,6 +342,7 @@ router.put('/:id/tasks', authenticateToken, requireOwnershipOrAdmin(), taskValid
       gameId: game._id,
       taskId: `task_${taskNumber}`,
       taskNumber,
+      question: task.question,
       url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/task/${game._id}/${taskNumber}`
     };
 
@@ -594,6 +596,74 @@ router.post('/:id/end', authenticateToken, requireOwnershipOrAdmin(), asyncHandl
   });
 }));
 
+// @route   POST /api/games/:id/message
+// @desc    Send a message to all players in a game
+// @access  Private (Owner or Admin)
+router.post('/:id/message', authenticateToken, requireOwnershipOrAdmin(), [
+  body('message')
+    .trim()
+    .isLength({ min: 1, max: 500 })
+    .withMessage('Message must be between 1 and 500 characters')
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: errors.array()
+    });
+  }
+
+  const game = await Game.findById(req.params.id);
+  if (!game) {
+    throw new AppError('Game not found', 404, 'GAME_NOT_FOUND');
+  }
+
+  // Check ownership
+  if (req.requireOwnershipCheck && 
+      !['super_admin', 'admin'].includes(req.user.role) &&
+      game.createdBy.toString() !== req.user._id.toString()) {
+    throw new AppError('Access denied', 403, 'ACCESS_DENIED');
+  }
+
+  const { message } = req.body;
+
+  // Get all players in the game
+  const players = await Player.find({ game: game._id });
+  
+  if (players.length === 0) {
+    throw new AppError('No players found in this game', 400, 'NO_PLAYERS');
+  }
+
+  // For now, we'll just store the message in the game object
+  // In a real implementation, you might want to use WebSockets or push notifications
+  if (!game.messages) {
+    game.messages = [];
+  }
+
+  const newMessage = {
+    text: message.trim(),
+    sender: req.user.name || req.user.email,
+    timestamp: new Date(),
+    recipients: players.length
+  };
+
+  game.messages.push(newMessage);
+  await game.save();
+
+  // TODO: In a real implementation, you would send the message to all connected players
+  // via WebSockets, push notifications, or similar real-time communication method
+
+  res.json({
+    message: 'Message sent successfully to all players',
+    messageDetails: {
+      text: newMessage.text,
+      sender: newMessage.sender,
+      timestamp: newMessage.timestamp,
+      recipients: newMessage.recipients
+    }
+  });
+}));
+
 // @route   DELETE /api/games/:id
 // @desc    Delete a game
 // @access  Private (Owner or Admin)
@@ -615,12 +685,9 @@ router.delete('/:id', authenticateToken, requireOwnershipOrAdmin(), asyncHandler
     throw new AppError('Cannot delete active game', 400, 'GAME_ACTIVE');
   }
 
-  // Soft delete
-  game.isActive = false;
-  await game.save();
-
-  // Also remove all players from the game
+  // Hard delete - completely remove from database
   await Player.deleteMany({ game: game._id });
+  await Game.findByIdAndDelete(req.params.id);
 
   res.json({
     message: 'Game deleted successfully'
@@ -730,6 +797,33 @@ router.get('/:id/predefined-players', authenticateToken, requireOwnershipOrAdmin
   });
 }));
 
+// @route   GET /api/games/:id/tasks
+// @desc    Get tasks with QR codes for a game
+// @access  Private (Owner or Admin)
+router.get('/:id/tasks', authenticateToken, requireOwnershipOrAdmin(), asyncHandler(async (req, res) => {
+  const game = await Game.findById(req.params.id);
+  if (!game) {
+    throw new AppError('Game not found', 404, 'GAME_NOT_FOUND');
+  }
+
+  // Check ownership
+  if (req.requireOwnershipCheck && 
+      !['super_admin', 'admin'].includes(req.user.role) &&
+      game.createdBy.toString() !== req.user._id.toString()) {
+    throw new AppError('Access denied', 403, 'ACCESS_DENIED');
+  }
+
+  res.json({
+    tasks: game.tasks || [],
+    gameInfo: {
+      id: game._id,
+      name: game.name,
+      gameCode: game.gameCode,
+      status: game.status
+    }
+  });
+}));
+
 // @route   PUT /api/games/:id/predefined-players/:playerId
 // @desc    Update a predefined player
 // @access  Private (Owner or Admin)
@@ -807,40 +901,60 @@ router.put('/:id/predefined-players/:playerId', authenticateToken, requireOwners
 // @route   DELETE /api/games/:id/predefined-players/:playerId
 // @desc    Remove a predefined player
 // @access  Private (Owner or Admin)
-router.delete('/:id/predefined-players/:playerId', authenticateToken, requireOwnershipOrAdmin(), asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
-  if (!game) {
-    throw new AppError('Game not found', 404, 'GAME_NOT_FOUND');
+router.delete('/:id/predefined-players/:playerId', authenticateToken, asyncHandler(async (req, res) => {
+  console.log('=== DELETE PREDEFINED PLAYER ROUTE HIT ===');
+  console.log('Game ID:', req.params.id);
+  console.log('Player ID:', req.params.playerId);
+  console.log('User:', req.user?.email, req.user?.role);
+  
+  try {
+    const game = await Game.findById(req.params.id);
+    if (!game) {
+      console.log('Game not found');
+      throw new AppError('Game not found', 404, 'GAME_NOT_FOUND');
+    }
+
+    console.log('Game found:', { id: game._id, status: game.status, createdBy: game.createdBy });
+
+    // Simple ownership check - only check if user is admin or game creator
+    if (!['super_admin', 'admin'].includes(req.user.role) &&
+        game.createdBy.toString() !== req.user._id.toString()) {
+      console.log('Access denied - ownership check failed');
+      throw new AppError('Access denied', 403, 'ACCESS_DENIED');
+    }
+
+    // Can't update active games
+    if (game.status === 'active') {
+      console.log('Cannot update active game');
+      throw new AppError('Cannot update active game', 400, 'GAME_ACTIVE');
+    }
+
+    const predefinedPlayer = game.predefinedPlayers.id(req.params.playerId);
+    if (!predefinedPlayer) {
+      console.log('Predefined player not found');
+      throw new AppError('Predefined player not found', 404, 'PLAYER_NOT_FOUND');
+    }
+
+    console.log('Found predefined player:', { name: predefinedPlayer.name, isJoined: predefinedPlayer.isJoined });
+
+    // Can't remove if player has already joined
+    if (predefinedPlayer.isJoined) {
+      console.log('Cannot remove player who has already joined');
+      throw new AppError('Cannot remove player who has already joined', 400, 'PLAYER_ALREADY_JOINED');
+    }
+
+    console.log('Removing predefined player...');
+    game.predefinedPlayers.pull(req.params.playerId);
+    await game.save();
+
+    console.log('Predefined player removed successfully');
+    res.json({
+      message: 'Predefined player removed successfully'
+    });
+  } catch (error) {
+    console.log('Error in delete predefined player route:', error);
+    throw error;
   }
-
-  // Check ownership
-  if (req.requireOwnershipCheck && 
-      !['super_admin', 'admin'].includes(req.user.role) &&
-      game.createdBy.toString() !== req.user._id.toString()) {
-    throw new AppError('Access denied', 403, 'ACCESS_DENIED');
-  }
-
-  // Can't update active games
-  if (game.status === 'active') {
-    throw new AppError('Cannot update active game', 400, 'GAME_ACTIVE');
-  }
-
-  const predefinedPlayer = game.predefinedPlayers.id(req.params.playerId);
-  if (!predefinedPlayer) {
-    throw new AppError('Predefined player not found', 404, 'PLAYER_NOT_FOUND');
-  }
-
-  // Can't remove if player has already joined
-  if (predefinedPlayer.isJoined) {
-    throw new AppError('Cannot remove player who has already joined', 400, 'PLAYER_ALREADY_JOINED');
-  }
-
-  game.predefinedPlayers.pull(req.params.playerId);
-  await game.save();
-
-  res.json({
-    message: 'Predefined player removed successfully'
-  });
 }));
 
 // @route   GET /api/games/code/:gameCode
@@ -850,7 +964,7 @@ router.get('/code/:gameCode', asyncHandler(async (req, res) => {
   const game = await Game.findOne({ 
     gameCode: req.params.gameCode.toUpperCase(),
     isActive: true 
-  }).select('name description status gameCode settings predefinedPlayers');
+  }); // Remove .select() to get ALL fields including startTime, endTime, tasks, etc.
 
   if (!game) {
     throw new AppError('Game not found', 404, 'GAME_NOT_FOUND');
@@ -862,6 +976,15 @@ router.get('/code/:gameCode', asyncHandler(async (req, res) => {
   // Get available predefined players (not yet joined)
   const availablePlayers = game.predefinedPlayers.filter(p => !p.isJoined);
 
+  // Get ALL predefined players (for rejoining functionality)
+  const allPlayers = game.predefinedPlayers.map(p => ({
+    id: p._id,
+    name: p.name,
+    role: p.role,
+    team: p.team,
+    isJoined: p.isJoined
+  }));
+
   res.json({
     game: {
       id: game._id,
@@ -869,14 +992,23 @@ router.get('/code/:gameCode', asyncHandler(async (req, res) => {
       description: game.description,
       status: game.status,
       gameCode: game.gameCode,
+      startTime: game.startTime,
+      endTime: game.endTime,
+      pausedAt: game.pausedAt,
+      resumedAt: game.resumedAt,
+      duration: game.duration,
+      tasks: game.tasks || [],
+      extractionPoint: game.extractionPoint,
       playerCount,
-      maxPlayers: game.settings.maxPlayers,
+      maxPlayers: game.settings?.maxPlayers || 20,
+      settings: game.settings,
       availablePlayers: availablePlayers.map(p => ({
         id: p._id,
         name: p.name,
         role: p.role,
         team: p.team
-      }))
+      })),
+      allPlayers: allPlayers // Include all players for rejoining
     }
   });
 }));

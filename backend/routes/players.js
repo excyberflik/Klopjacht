@@ -586,4 +586,106 @@ router.get('/:id/stats', asyncHandler(async (req, res) => {
   res.json({ stats });
 }));
 
+// @route   POST /api/players/:id/complete-task
+// @desc    Complete a task for a player
+// @access  Public (for game players)
+router.post('/:id/complete-task', [
+  body('taskNumber')
+    .isInt({ min: 1, max: 6 })
+    .withMessage('Task number must be between 1 and 6'),
+  body('answer')
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Answer must be between 1 and 100 characters'),
+  body('gameId')
+    .isMongoId()
+    .withMessage('Valid game ID is required')
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: errors.array()
+    });
+  }
+
+  const { taskNumber, answer, gameId } = req.body;
+  const playerId = req.params.id;
+
+  // Find the player
+  const player = await Player.findById(playerId).populate('game');
+  if (!player) {
+    throw new AppError('Player not found', 404, 'PLAYER_NOT_FOUND');
+  }
+
+  // Verify the game ID matches
+  if (player.game._id.toString() !== gameId) {
+    throw new AppError('Game ID mismatch', 400, 'GAME_MISMATCH');
+  }
+
+  // Check if game is active
+  if (player.game.status !== 'active') {
+    throw new AppError('Game is not active', 400, 'GAME_NOT_ACTIVE');
+  }
+
+  // Check if player is active
+  if (player.status !== 'active') {
+    throw new AppError('Player is not active', 400, 'PLAYER_NOT_ACTIVE');
+  }
+
+  // Find the task in the game
+  const task = player.game.tasks.find(t => t.taskNumber === taskNumber);
+  if (!task) {
+    throw new AppError('Task not found', 404, 'TASK_NOT_FOUND');
+  }
+
+  // Check if player can access this task (sequential completion)
+  const playerCompletedTasks = player.tasksCompleted || 0;
+  if (taskNumber !== playerCompletedTasks + 1) {
+    if (taskNumber <= playerCompletedTasks) {
+      throw new AppError('Task already completed', 400, 'TASK_ALREADY_COMPLETED');
+    } else {
+      throw new AppError('Must complete previous tasks first', 400, 'SEQUENTIAL_COMPLETION_REQUIRED');
+    }
+  }
+
+  // Check the answer (case-insensitive)
+  const normalizedAnswer = answer.toLowerCase().trim();
+  const correctAnswer = task.answer.toLowerCase().trim();
+  const isCorrect = normalizedAnswer === correctAnswer;
+
+  if (isCorrect) {
+    // Update player's completed tasks count
+    player.tasksCompleted = (player.tasksCompleted || 0) + 1;
+    
+    // Add completion record to the task
+    if (!task.completedBy) {
+      task.completedBy = [];
+    }
+    
+    task.completedBy.push({
+      player: player._id,
+      completedAt: new Date(),
+      answer: normalizedAnswer
+    });
+
+    // Save both player and game
+    await player.save();
+    await player.game.save();
+
+    res.json({
+      correct: true,
+      message: 'Task completed successfully',
+      tasksCompleted: player.tasksCompleted,
+      taskNumber: taskNumber
+    });
+  } else {
+    res.json({
+      correct: false,
+      message: 'Incorrect answer',
+      taskNumber: taskNumber
+    });
+  }
+}));
+
 module.exports = router;

@@ -177,38 +177,43 @@ const gameSchema = new mongoose.Schema({
   results: {
     winner: {
       type: String,
-      enum: ['fugitives', 'hunters', 'none']
+      enum: ['fugitives', 'hunters', 'none'],
+      default: 'none'
     },
-    fugitivesEscaped: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Player'
-    }],
+    gameEndReason: String,
+    fugitivesEscaped: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }],
     fugitivesCaught: [{
-      player: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Player'
-      },
-      caughtBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Player'
-      },
-      caughtAt: {
-        type: Date
-      },
+      player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+      caughtAt: Date,
       location: {
         latitude: Number,
-        longitude: Number
+        longitude: Number,
+        address: String
       }
-    }],
-    completedTasks: {
-      type: Number,
-      default: 0
-    },
-    gameEndReason: {
-      type: String,
-      enum: ['time_up', 'all_fugitives_caught', 'fugitives_escaped', 'cancelled', 'manual']
-    }
+    }]
   },
+
+  // Messages sent to all players
+  messages: [{
+    text: {
+      type: String,
+      required: true,
+      maxlength: 500
+    },
+    sender: {
+      type: String,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    recipients: {
+      type: Number,
+      required: true
+    }
+  }],
+
   isActive: {
     type: Boolean,
     default: true

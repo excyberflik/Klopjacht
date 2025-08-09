@@ -17,6 +17,7 @@
     "axios": "^1.6.2",
     "date-fns": "^2.30.0",
     "framer-motion": "^10.16.16",
+    "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "qr-scanner": "^1.4.2",
     "react": "^18.2.0",

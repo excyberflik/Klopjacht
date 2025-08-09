@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MapSelector from '../components/MapSelector';
+import { API_ENDPOINTS } from '../config/api';
 
 interface PredefinedPlayer {
   _id: string;
@@ -13,12 +14,162 @@ interface PredefinedPlayer {
   createdAt: string;
 }
 
+// QR Codes Display Component
+const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.GAME_TASKS(gameId), {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setTasks(data.tasks || []);
+        } else {
+          setError('Failed to load QR codes');
+        }
+      } catch (err) {
+        setError('Error loading QR codes');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (gameId) {
+      fetchTasks();
+    }
+  }, [gameId]);
+
+  const downloadQRCode = (qrCode: string, taskNumber: number) => {
+    const link = document.createElement('a');
+    link.href = qrCode;
+    link.download = `Mission_${taskNumber}_QR.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <div>Loading QR codes...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ textAlign: 'center', padding: '2rem', color: '#ff6b6b' }}>
+        <div>{error}</div>
+      </div>
+    );
+  }
+
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+        <div className="no-games-icon">📱</div>
+        <div className="no-games-title">NO QR CODES GENERATED</div>
+        <div className="no-games-subtitle">Create tasks first to generate QR codes</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="qr-codes-grid">
+      {tasks.map((task) => (
+        <div key={task.taskNumber} className="qr-code-item">
+          <div className="qr-code-header">
+            <h5>MISSION {task.taskNumber}</h5>
+            <div className="qr-code-location">📍 {task.location?.address || 'No location'}</div>
+          </div>
+          
+          <div className="qr-code-display">
+            {task.qrCode ? (
+              <img 
+                src={task.qrCode} 
+                alt={`Mission ${task.taskNumber} QR Code`}
+                style={{ width: '150px', height: '150px', border: '2px solid #ddd' }}
+              />
+            ) : (
+              <div style={{ 
+                width: '150px', 
+                height: '150px', 
+                border: '2px solid #ddd', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                backgroundColor: '#f5f5f5',
+                color: '#888'
+              }}>
+                No QR Code
+              </div>
+            )}
+          </div>
+          
+          <div className="qr-code-question">
+            <strong>Question:</strong> {task.question || 'No question'}
+          </div>
+          
+          <div className="qr-code-actions">
+            {task.qrCode && (
+              <button 
+                className="btn-enhanced btn-primary-enhanced"
+                onClick={() => downloadQRCode(task.qrCode, task.taskNumber)}
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }}
+              >
+                📥 DOWNLOAD
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      
+      <div className="qr-codes-actions" style={{ marginTop: '1rem', textAlign: 'center' }}>
+        <button 
+          className="btn-enhanced btn-info-enhanced"
+          onClick={() => {
+            tasks.forEach((task) => {
+              if (task.qrCode) {
+                setTimeout(() => downloadQRCode(task.qrCode, task.taskNumber), task.taskNumber * 100);
+              }
+            });
+          }}
+        >
+          📥 DOWNLOAD ALL QR CODES
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [selectedView, setSelectedView] = useState(() => {
     // Check URL parameters for initial view
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('view') || 'overview';
+    const urlView = urlParams.get('view');
+    
+    // If there's a URL parameter, use that
+    if (urlView) {
+      return urlView;
+    }
+    
+    // For game leads, default to the KLOPJACHT DATABASE view
+    const userRole = localStorage.getItem('userRole');
+    if (userRole === 'game_lead') {
+      return 'games';
+    }
+    
+    // For super admins and others, default to overview
+    return 'overview';
   });
   const [gameForm, setGameForm] = useState({
     name: '',
@@ -54,7 +205,7 @@ const AdminDashboard = () => {
       
       // Fetch games
       console.log('Fetching games...');
-      const gamesResponse = await fetch('http://localhost:5000/api/games', {
+      const gamesResponse = await fetch(API_ENDPOINTS.GAMES, {
         headers: {
           'Authorization': `Bearer ${token}`,
         }
@@ -75,7 +226,7 @@ const AdminDashboard = () => {
       // Only fetch all players if user is admin or super_admin
       if (userRole === 'admin' || userRole === 'super_admin') {
         console.log('Fetching players (admin/super_admin access)...');
-        const playersResponse = await fetch('http://localhost:5000/api/players', {
+        const playersResponse = await fetch(API_ENDPOINTS.PLAYERS, {
           headers: {
             'Authorization': `Bearer ${token}`,
           }
@@ -112,8 +263,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchData();
     
-    // Set up auto-refresh every 30 seconds to show real-time updates
-    const interval = setInterval(fetchData, 30000);
+    // Set up auto-refresh every 60 seconds to show real-time updates
+    const interval = setInterval(fetchData, 60000);
     
     return () => clearInterval(interval);
   }, [navigate]);
@@ -169,7 +320,7 @@ const AdminDashboard = () => {
     
     if (window.confirm(`Are you sure you want to delete the game "${gameName}"?\n\nThis action cannot be undone and will remove all associated data.`)) {
       try {
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}`, {
+        const response = await fetch(API_ENDPOINTS.GAME_BY_ID(gameId), {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -236,7 +387,7 @@ const AdminDashboard = () => {
   const handleStartGame = async (gameId: string, gameName: string) => {
     if (window.confirm(`Start the game "${gameName}"?\n\nThis will begin the countdown timer and notify all players.`)) {
       try {
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/start`, {
+        const response = await fetch(API_ENDPOINTS.GAME_START(gameId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -264,7 +415,7 @@ const AdminDashboard = () => {
         console.log('Attempting to pause game:', { gameId, gameName });
         console.log('Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
         
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/pause`, {
+        const response = await fetch(API_ENDPOINTS.GAME_PAUSE(gameId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -296,7 +447,7 @@ const AdminDashboard = () => {
         console.log('Attempting to resume game:', { gameId, gameName });
         console.log('Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
         
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/resume`, {
+        const response = await fetch(API_ENDPOINTS.GAME_RESUME(gameId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -335,7 +486,7 @@ const AdminDashboard = () => {
     
     if (window.confirm(`End the game "${gameName}"?\n\nCurrent Status: ${currentGame?.status || 'Unknown'}\n\nThis action cannot be undone and will complete the game for all players.`)) {
       try {
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/end`, {
+        const response = await fetch(API_ENDPOINTS.GAME_END(gameId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -382,7 +533,7 @@ const AdminDashboard = () => {
     
     if (message && message.trim()) {
       try {
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/message`, {
+        const response = await fetch(API_ENDPOINTS.GAME_MESSAGE(gameId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -428,19 +579,19 @@ const AdminDashboard = () => {
     }
     
     try {
-      const response = await fetch(`http://localhost:5000/api/games/${gameId}/predefined-players/${player._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          name: newName.trim(),
-          role: newRole.toLowerCase(),
-          team: newTeam.trim() || undefined,
-          password: newPassword.trim()
-        })
-      });
+        const response = await fetch(API_ENDPOINTS.GAME_DELETE_PREDEFINED_PLAYER(gameId, player._id), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            name: newName.trim(),
+            role: newRole.toLowerCase(),
+            team: newTeam.trim() || undefined,
+            password: newPassword.trim()
+          })
+        });
 
       if (response.ok) {
         alert('Player updated successfully!');
@@ -458,7 +609,7 @@ const AdminDashboard = () => {
   const handleDeletePredefinedPlayer = async (gameId: string, playerId: string, playerName: string) => {
     if (window.confirm(`Are you sure you want to delete player "${playerName}"?\n\nThis action cannot be undone.`)) {
       try {
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}/predefined-players/${playerId}`, {
+        const response = await fetch(API_ENDPOINTS.GAME_DELETE_PREDEFINED_PLAYER(gameId, playerId), {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -483,7 +634,7 @@ const AdminDashboard = () => {
     if (window.confirm(`Edit the game "${gameName}"?\n\nThis will allow you to modify game details, tasks, and locations before starting the game.`)) {
       try {
         // First, fetch the current game data
-        const response = await fetch(`http://localhost:5000/api/games/${gameId}`, {
+        const response = await fetch(API_ENDPOINTS.GAME_BY_ID(gameId), {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
           }
@@ -540,56 +691,197 @@ const AdminDashboard = () => {
 
   const renderOverview = () => (
     <div className="admin-content">
-      <div className="game-features">
-        <div className="feature">
-          <h3>System Overview</h3>
-          <ul>
-            <li>Total Games: {Array.isArray(games) ? games.length : 0}</li>
-            <li>Active Games: {Array.isArray(games) ? games.filter(g => g.status === 'active').length : 0}</li>
-            <li>Total Players: {Array.isArray(players) ? players.length : 0}</li>
-            <li>Active Players: {Array.isArray(players) ? players.filter(p => p.status === 'active').length : 0}</li>
-          </ul>
+      <div className="klopjacht-header">
+        <div className="header-title">
+          <h2>KLOPJACHT: SYSTEM OVERVIEW</h2>
+          <div className="header-subtitle">COMPLETE SYSTEM MONITORING & CONTROL</div>
         </div>
-        
-        <div className="feature">
-          <h3>Active Games</h3>
-          <div className="games-list">
-            {Array.isArray(games) ? games.filter(game => game.status === 'active').map(game => (
-              <div key={game.id} className="game-item">
-                <strong>{game.gameCode}</strong> - {game.name}
-                <br />
-                <small>Players: {game.players}/{game.maxPlayers} | Time: {game.timeRemaining}</small>
-                <br />
-                <button 
-                  className="btn-small btn-primary" 
-                  onClick={() => handleViewGame(game.gameCode)}
-                  style={{ marginTop: '0.5rem', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                >
-                  View Details
-                </button>
-              </div>
-            )) : null}
+        <div className="header-actions">
+          <button 
+            className="btn btn-primary btn-large"
+            onClick={handleCreateGame}
+          >
+            🎮 CREATE NEW GAME
+          </button>
+        </div>
+      </div>
+      
+      <div className="klopjacht-stats">
+        <div 
+          className="stat-card-enhanced stat-card-clickable" 
+          onClick={() => setSelectedView('games')}
+          style={{ cursor: 'pointer' }}
+          title="Click to view all games"
+        >
+          <div className="stat-icon">🎯</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(games) ? games.length : 0}</div>
+            <div className="stat-label">TOTAL GAMES</div>
           </div>
         </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">⚡</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'active').length : 0}</div>
+            <div className="stat-label">ACTIVE GAMES</div>
+          </div>
+        </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">👥</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(players) ? players.length : 0}</div>
+            <div className="stat-label">TOTAL PLAYERS</div>
+          </div>
+        </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">🎮</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(players) ? players.filter(p => p.status === 'active').length : 0}</div>
+            <div className="stat-label">ACTIVE PLAYERS</div>
+          </div>
+        </div>
+      </div>
 
-        <div className="feature">
-          <h3>Live Player Status</h3>
-          <div className="players-list">
-            {players.filter(p => p.status === 'active').map(player => (
-              <div key={player.id} className="player-item">
-                <strong>{player.name}</strong> ({player.role})
-                <br />
-                <small>Game: {player.gameCode} | Tasks: {player.tasksCompleted}/6</small>
-                <br />
+      <div className="klopjacht-games-section">
+        <div className="klopjacht-games-grid">
+          {/* Active Games Card */}
+          <div className="klopjacht-game-card">
+            <div className="game-card-header-enhanced">
+              <div className="game-title">
+                <h4>ACTIVE GAMES</h4>
+                <div className="game-code">LIVE MONITORING</div>
+              </div>
+              <div className="status-badge-enhanced active">
+                {Array.isArray(games) ? games.filter(g => g.status === 'active').length : 0} LIVE
+              </div>
+            </div>
+            
+            <div className="game-card-body-enhanced">
+              {Array.isArray(games) && games.filter(game => game.status === 'active').length > 0 ? (
+                <div className="overview-games-list">
+                  {games.filter(game => game.status === 'active').map(game => (
+                    <div key={game._id || game.id} className="overview-game-item">
+                      <div className="overview-game-header">
+                        <strong>#{game.gameCode}</strong>
+                        <span className="overview-game-name">{game.name}</span>
+                      </div>
+                      <div className="overview-game-details">
+                        <div><strong>PLAYERS:</strong> {game.players || 0}/{game.maxPlayers || 20}</div>
+                        <div><strong>TIME:</strong> {gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
+                      </div>
+                      <div className="overview-game-actions">
+                        <button 
+                          className="btn-enhanced btn-primary-enhanced" 
+                          onClick={() => handleViewGame(game.gameCode)}
+                        >
+                          📊 VIEW DETAILS
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+                  <div className="no-games-icon">⚡</div>
+                  <div className="no-games-title">NO ACTIVE GAMES</div>
+                  <div className="no-games-subtitle">No games are currently running</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Live Player Status Card */}
+          <div className="klopjacht-game-card">
+            <div className="game-card-header-enhanced">
+              <div className="game-title">
+                <h4>LIVE PLAYER STATUS</h4>
+                <div className="game-code">REAL-TIME MONITORING</div>
+              </div>
+              <div className="status-badge-enhanced active">
+                {Array.isArray(players) ? players.filter(p => p.status === 'active').length : 0} ACTIVE
+              </div>
+            </div>
+            
+            <div className="game-card-body-enhanced">
+              {Array.isArray(players) && players.filter(p => p.status === 'active').length > 0 ? (
+                <div className="overview-players-list">
+                  {players.filter(p => p.status === 'active').map(player => (
+                    <div key={player._id || player.id} className="overview-player-item">
+                      <div className="overview-player-header">
+                        <strong>{player.name.toUpperCase()}</strong>
+                        <span className={`status-badge-enhanced ${player.status}`}>
+                          {player.role?.toUpperCase() || 'UNKNOWN'}
+                        </span>
+                      </div>
+                      <div className="overview-player-details">
+                        <div><strong>GAME:</strong> #{player.gameCode || 'N/A'}</div>
+                        <div><strong>TASKS:</strong> {player.tasksCompleted || 0}/6</div>
+                      </div>
+                      <div className="overview-player-actions">
+                        <button 
+                          className="btn-enhanced btn-info-enhanced" 
+                          onClick={() => handleViewLocation(player)}
+                        >
+                          📍 LOCATION
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+                  <div className="no-games-icon">👥</div>
+                  <div className="no-games-title">NO ACTIVE PLAYERS</div>
+                  <div className="no-games-subtitle">No players are currently in games</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* System Status Card */}
+          <div className="klopjacht-game-card">
+            <div className="game-card-header-enhanced">
+              <div className="game-title">
+                <h4>SYSTEM STATUS</h4>
+                <div className="game-code">HEALTH MONITORING</div>
+              </div>
+              <div className="status-badge-enhanced active">
+                OPERATIONAL
+              </div>
+            </div>
+            
+            <div className="game-card-body-enhanced">
+              <div className="system-status-grid">
+                <div className="status-item">
+                  <div className="status-label">DATABASE</div>
+                  <div className="status-value">✅ CONNECTED</div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">BACKEND</div>
+                  <div className="status-value">✅ RUNNING</div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">FRONTEND</div>
+                  <div className="status-value">✅ ACTIVE</div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">LAST REFRESH</div>
+                  <div className="status-value">{new Date().toLocaleTimeString()}</div>
+                </div>
+              </div>
+              
+              <div className="system-actions">
                 <button 
-                  className="btn-small btn-secondary" 
-                  onClick={() => handleViewLocation(player)}
-                  style={{ marginTop: '0.25rem', padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
+                  className="btn-enhanced btn-primary-enhanced"
+                  onClick={() => {
+                    console.log('Manual refresh triggered from overview');
+                    fetchData();
+                  }}
                 >
-                  View Location
+                  🔄 REFRESH DATA
                 </button>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>
@@ -691,221 +983,355 @@ const AdminDashboard = () => {
     if (!game) {
       return (
         <div className="admin-content">
-          <div className="game-header">
-            <h2>Game Not Found</h2>
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => setSelectedView('games')}
-              style={{ marginBottom: '1rem' }}
-            >
-              ← Back to All Games
-            </button>
+          <div className="klopjacht-header">
+            <div className="header-title">
+              <h2>GAME NOT FOUND</h2>
+              <div className="header-subtitle">UNABLE TO LOCATE REQUESTED GAME</div>
+            </div>
+            <div className="header-actions">
+              <button 
+                className="btn btn-secondary btn-large" 
+                onClick={() => setSelectedView('games')}
+              >
+                ← BACK TO GAMES
+              </button>
+            </div>
           </div>
-          <p>Could not find game with code: {gameCode}</p>
-          <p>Available games: {games.length}</p>
+          <div className="no-games-enhanced">
+            <div className="no-games-icon">❌</div>
+            <div className="no-games-title">GAME NOT FOUND</div>
+            <div className="no-games-subtitle">Could not find game with code: {gameCode}</div>
+            <div style={{ marginTop: '1rem', color: '#888' }}>Available games: {games.length}</div>
+          </div>
         </div>
       );
     }
     
     return (
       <div className="admin-content">
-        <div className="game-header">
-          <h2>Game: {game.name} ({game.gameCode})</h2>
-          <button 
-            className="btn btn-secondary" 
-            onClick={() => setSelectedView('overview')}
-            style={{ marginBottom: '1rem' }}
-          >
-            ← Back to Overview
-          </button>
+        <div className="klopjacht-header">
+          <div className="header-title">
+            <h2>KLOPJACHT: {game.name.toUpperCase()}</h2>
+            <div className="header-subtitle">GAME CODE: #{game.gameCode} | COMPLETE GAME MANAGEMENT</div>
+          </div>
+          <div className="header-actions">
+            <button 
+              className="btn btn-secondary btn-large" 
+              onClick={() => setSelectedView('games')}
+            >
+              ← BACK TO GAMES
+            </button>
+          </div>
         </div>
         
-        <div className="game-features">
-          <div className="feature">
-            <h3>Game Status & Actions</h3>
-            <div style={{ marginBottom: '1rem' }}>
-              <ul>
-                <li>Status: {game.status}</li>
-                <li>Players: {game.players}/{game.maxPlayers}</li>
-                <li>Time Remaining: {gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</li>
-                <li>Started: {game.startTime}</li>
-                <li>Created by: {typeof game.createdBy === 'object' ? game.createdBy?.name || 'Unknown' : game.createdBy || 'Unknown'}</li>
-              </ul>
-            </div>
-            
-            <div className="game-actions">
-              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
-                Game Status: "{game.status}" | ID: {game._id || game.id}
+        <div className="klopjacht-games-section">
+          <div className="klopjacht-games-grid">
+            {/* Game Status & Actions Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>GAME STATUS & ACTIONS</h4>
+                  <div className="game-code">CONTROL CENTER</div>
+                </div>
+                <div className={`status-badge-enhanced ${game.status}`}>
+                  {game.status?.toUpperCase() || 'UNKNOWN'}
+                </div>
               </div>
               
-              {/* Edit Game - show for setup/waiting/created games (before they start) */}
-              {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
-                <button 
-                  className="btn btn-warning" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handleEditGame(game._id || game.id, game.name)}
-                >
-                  ✏️ Edit Game
-                </button>
-              )}
+              <div className="game-card-body-enhanced">
+                <div className="game-info-grid">
+                  <div className="info-item">
+                    <div className="info-label">STATUS</div>
+                    <div className="info-value">{game.status?.toUpperCase() || 'UNKNOWN'}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">PLAYERS</div>
+                    <div className="info-value">{game.players || 0}/{game.maxPlayers || 20}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">STARTED</div>
+                    <div className="info-value">{game.startTime ? new Date(game.startTime).toLocaleString() : 'Not started'}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">CREATOR</div>
+                    <div className="info-value">{typeof game.createdBy === 'object' ? game.createdBy?.name || 'Unknown' : game.createdBy || 'Unknown'}</div>
+                  </div>
+                </div>
+                
+                {game.status === 'active' && (
+                  <div className="game-timer">
+                    <div className="timer-label">TIME REMAINING</div>
+                    <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
+                  </div>
+                )}
+              </div>
               
-              {/* Start Game - show for setup/waiting/created games */}
-              {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
+              <div className="game-card-actions-enhanced">
+                {/* Edit Game - show for setup/waiting/created games (before they start) */}
+                {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
+                  <button 
+                    className="btn-enhanced btn-primary-enhanced" 
+                    onClick={() => handleEditGame(game._id || game.id, game.name)}
+                  >
+                    ✏️ EDIT
+                  </button>
+                )}
+                
+                {/* Start Game - show for setup/waiting/created games */}
+                {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
+                  <button 
+                    className="btn-enhanced btn-primary-enhanced" 
+                    onClick={() => handleStartGame(game._id || game.id, game.name)}
+                  >
+                    ▶️ START
+                  </button>
+                )}
+                
+                {/* Pause Game - show for active games */}
+                {game.status === 'active' && (
+                  <button 
+                    className="btn-enhanced btn-primary-enhanced" 
+                    onClick={() => handlePauseGame(game._id || game.id, game.name)}
+                  >
+                    ⏸️ PAUSE
+                  </button>
+                )}
+                
+                {/* Resume Game - show for paused games */}
+                {game.status === 'paused' && (
+                  <button 
+                    className="btn-enhanced btn-primary-enhanced" 
+                    onClick={() => handleResumeGame(game._id || game.id, game.name)}
+                  >
+                    ▶️ RESUME
+                  </button>
+                )}
+                
+                {/* End Game - show for active or paused games */}
+                {(game.status === 'active' || game.status === 'paused') && (
+                  <button 
+                    className="btn-enhanced btn-danger-enhanced" 
+                    onClick={() => handleEndGame(game._id || game.id, game.name)}
+                  >
+                    ⏹️ END
+                  </button>
+                )}
+                
+                {/* Always show End Game button if game is not completed */}
+                {game.status !== 'completed' && game.status !== 'cancelled' && game.status !== 'active' && game.status !== 'paused' && (
+                  <button 
+                    className="btn-enhanced btn-danger-enhanced" 
+                    onClick={() => handleEndGame(game._id || game.id, game.name)}
+                  >
+                    ⏹️ END
+                  </button>
+                )}
+                
+                {/* Send Message - always available */}
                 <button 
-                  className="btn btn-success" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handleStartGame(game._id || game.id, game.name)}
+                  className="btn-enhanced btn-info-enhanced" 
+                  onClick={() => handleSendMessage(game._id || game.id, game.name)}
                 >
-                  ▶️ Start Game
+                  💬 MESSAGE
                 </button>
-              )}
+                
+                {/* Delete Game - show for all games except active ones */}
+                <button 
+                  className="btn-enhanced btn-danger-enhanced" 
+                  onClick={() => handleDeleteGame(game._id || game.id, game.name)}
+                  disabled={game.status === 'active'}
+                  title={game.status === 'active' ? 'Cannot delete active games' : 'Delete this game permanently'}
+                >
+                  🗑️ DELETE
+                </button>
+              </div>
               
-              {/* Pause Game - show for active games */}
               {game.status === 'active' && (
-                <button 
-                  className="btn btn-warning" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handlePauseGame(game._id || game.id, game.name)}
-                >
-                  ⏸️ Pause Game
-                </button>
-              )}
-              
-              {/* Resume Game - show for paused games */}
-              {game.status === 'paused' && (
-                <button 
-                  className="btn btn-success" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handleResumeGame(game._id || game.id, game.name)}
-                >
-                  ▶️ Resume Game
-                </button>
-              )}
-              
-              {/* End Game - show for active or paused games */}
-              {(game.status === 'active' || game.status === 'paused') && (
-                <button 
-                  className="btn btn-danger" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handleEndGame(game._id || game.id, game.name)}
-                >
-                  ⏹️ End Game
-                </button>
-              )}
-              
-              {/* Always show End Game button if game is not completed */}
-              {game.status !== 'completed' && game.status !== 'cancelled' && game.status !== 'active' && game.status !== 'paused' && (
-                <button 
-                  className="btn btn-danger" 
-                  style={{ margin: '0.25rem' }}
-                  onClick={() => handleEndGame(game._id || game.id, game.name)}
-                >
-                  ⏹️ End Game
-                </button>
-              )}
-              
-              {/* Send Message - always available */}
-              <button 
-                className="btn btn-info" 
-                style={{ margin: '0.25rem' }}
-                onClick={() => handleSendMessage(game._id || game.id, game.name)}
-              >
-                💬 Send Message
-              </button>
-              
-              {/* Delete Game - show for all games except active ones */}
-              <button 
-                className="btn btn-danger" 
-                style={{ margin: '0.25rem' }}
-                onClick={() => handleDeleteGame(game._id || game.id, game.name)}
-                disabled={game.status === 'active'}
-                title={game.status === 'active' ? 'Cannot delete active games' : 'Delete this game permanently'}
-              >
-                🗑️ Delete Game {game.status === 'active' ? '(Disabled)' : ''}
-              </button>
-            </div>
-          </div>
-
-          <div className="feature">
-            <h3>Predefined Players ({game.predefinedPlayers?.length || 0})</h3>
-            <div className="players-detailed">
-              {game.predefinedPlayers && game.predefinedPlayers.length > 0 ? (
-                game.predefinedPlayers.map((player: PredefinedPlayer) => (
-                  <div key={player._id} className="player-detailed">
-                    <div className="player-info">
-                      <strong>{player.name}</strong>
-                      <span className={`status-badge ${player.isJoined ? 'joined' : 'available'}`}>
-                        {player.isJoined ? 'Joined' : 'Available'}
-                      </span>
-                    </div>
-                    <div className="player-details">
-                      <div>Role: {player.role}</div>
-                      <div>Team: {player.team || 'None'}</div>
-                      <div>Password: {player.password}</div>
-                      <div>Created: {new Date(player.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                      <button 
-                        className="btn-small btn-warning" 
-                        onClick={() => handleEditPredefinedPlayer(game._id || game.id, player)}
-                      >
-                        Edit
-                      </button>
-                      <button 
-                        className="btn-small btn-danger" 
-                        onClick={() => handleDeletePredefinedPlayer(game._id || game.id, player._id, player.name)}
-                        disabled={player.isJoined}
-                        title={player.isJoined ? 'Cannot delete players who have already joined' : 'Delete this predefined player'}
-                      >
-                        Delete {player.isJoined ? '(Joined)' : ''}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div style={{ padding: '1rem', textAlign: 'center', color: '#888' }}>
-                  No predefined players created yet.
-                  <br />
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    Add Players
-                  </button>
+                <div className="active-game-indicator">
+                  <div className="pulse-dot"></div>
+                  LIVE GAME IN PROGRESS
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="feature">
-            <h3>Active Players in Game ({gamePlayers.length})</h3>
-            <div className="players-detailed">
-              {gamePlayers.length > 0 ? gamePlayers.map(player => (
-                <div key={player._id || player.id} className="player-detailed">
-                  <div className="player-info">
-                    <strong>{player.name}</strong>
-                    <span className={`status-badge ${player.status}`}>{player.status}</span>
-                  </div>
-                  <div className="player-details">
-                    <div>Role: {player.role}</div>
-                    <div>Tasks: {player.tasksCompleted || 0}/6</div>
-                    <div>Location: {player.location?.address || player.currentLocation?.address || 'No location'}</div>
-                    <div>Last Update: {player.lastUpdate || player.lastSeen || 'Never'}</div>
-                  </div>
-                  <button 
-                    className="btn-small btn-primary" 
-                    onClick={() => handleViewLocation(player)}
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    View on Map
-                  </button>
+            {/* Predefined Players Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>PREDEFINED PLAYERS</h4>
+                  <div className="game-code">PLAYER SLOTS: {game.predefinedPlayers?.length || 0}</div>
                 </div>
-              )) : (
-                <div style={{ padding: '1rem', textAlign: 'center', color: '#888' }}>
-                  No players have joined the game yet.
+                <div className="status-badge-enhanced setup">
+                  {game.predefinedPlayers?.length || 0} PLAYERS
                 </div>
-              )}
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                {game.predefinedPlayers && game.predefinedPlayers.length > 0 ? (
+                  <div className="players-enhanced-list">
+                    {game.predefinedPlayers.map((player: PredefinedPlayer) => (
+                      <div key={player._id} className="player-enhanced-item">
+                        <div className="player-enhanced-header">
+                          <strong>{player.name.toUpperCase()}</strong>
+                          <span className={`status-badge-enhanced ${player.isJoined ? 'active' : 'setup'}`}>
+                            {player.isJoined ? 'JOINED' : 'AVAILABLE'}
+                          </span>
+                        </div>
+                        <div className="player-enhanced-details">
+                          <div><strong>ROLE:</strong> {player.role.toUpperCase()}</div>
+                          <div><strong>TEAM:</strong> {(player.team || 'NONE').toUpperCase()}</div>
+                          <div><strong>PASSWORD:</strong> {player.password}</div>
+                          <div><strong>CREATED:</strong> {new Date(player.createdAt).toLocaleDateString()}</div>
+                        </div>
+                        <div className="player-enhanced-actions">
+                          <button 
+                            className="btn-enhanced btn-primary-enhanced" 
+                            onClick={() => handleEditPredefinedPlayer(game._id || game.id, player)}
+                          >
+                            ✏️ EDIT
+                          </button>
+                          <button 
+                            className="btn-enhanced btn-danger-enhanced" 
+                            onClick={() => handleDeletePredefinedPlayer(game._id || game.id, player._id, player.name)}
+                            disabled={player.isJoined}
+                            title={player.isJoined ? 'Cannot delete players who have already joined' : 'Delete this predefined player'}
+                          >
+                            🗑️ {player.isJoined ? 'JOINED' : 'DELETE'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+                    <div className="no-games-icon">👥</div>
+                    <div className="no-games-title">NO PLAYERS CREATED</div>
+                    <div className="no-games-subtitle">Create predefined players to get started</div>
+                    <button 
+                      className="btn btn-primary btn-large" 
+                      onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
+                      style={{ marginTop: '1rem' }}
+                    >
+                      👥 ADD PLAYERS
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Joined Players Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>JOINED PLAYERS</h4>
+                  <div className="game-code">IN GAME: {(() => {
+                    // Count predefined players who have joined
+                    const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined).length || 0;
+                    // Count active players in the game
+                    const activePlayers = gamePlayers.length;
+                    return Math.max(joinedPredefined, activePlayers);
+                  })()}</div>
+                </div>
+                <div className="status-badge-enhanced active">
+                  {(() => {
+                    const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined).length || 0;
+                    const activePlayers = gamePlayers.length;
+                    const totalJoined = Math.max(joinedPredefined, activePlayers);
+                    return `${totalJoined} JOINED`;
+                  })()}
+                </div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                {(() => {
+                  // Show predefined players who have joined, or active players if game is running
+                  const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined) || [];
+                  const playersToShow = joinedPredefined.length > 0 ? joinedPredefined : gamePlayers;
+                  
+                  return playersToShow.length > 0 ? (
+                    <div className="players-enhanced-list">
+                      {playersToShow.map((player: any) => {
+                        // Handle both predefined players and active players
+                        const isPredefPlayer = player.hasOwnProperty('isJoined');
+                        
+                        return (
+                          <div key={player._id || player.id} className="player-enhanced-item">
+                            <div className="player-enhanced-header">
+                              <strong>{player.name.toUpperCase()}</strong>
+                              <span className={`status-badge-enhanced ${
+                                isPredefPlayer 
+                                  ? (game.status === 'active' ? 'active' : 'setup')
+                                  : (player.status || 'active')
+                              }`}>
+                                {isPredefPlayer 
+                                  ? (game.status === 'active' ? 'IN GAME' : 'WAITING')
+                                  : (player.status?.toUpperCase() || 'ACTIVE')
+                                }
+                              </span>
+                            </div>
+                            <div className="player-enhanced-details">
+                              <div><strong>ROLE:</strong> {player.role?.toUpperCase() || 'UNKNOWN'}</div>
+                              <div><strong>TEAM:</strong> {(player.team || 'NONE').toUpperCase()}</div>
+                              {!isPredefPlayer && (
+                                <>
+                                  <div><strong>TASKS:</strong> {player.tasksCompleted || 0}/6</div>
+                                  <div><strong>LOCATION:</strong> {player.location?.address || player.currentLocation?.address || 'NO LOCATION'}</div>
+                                </>
+                              )}
+                              {isPredefPlayer && (
+                                <>
+                                  <div><strong>STATUS:</strong> JOINED & {game.status === 'active' ? 'PLAYING' : 'WAITING'}</div>
+                                  <div><strong>JOINED:</strong> {new Date(player.createdAt).toLocaleDateString()}</div>
+                                </>
+                              )}
+                            </div>
+                            <div className="player-enhanced-actions">
+                              {!isPredefPlayer && (
+                                <button 
+                                  className="btn-enhanced btn-info-enhanced" 
+                                  onClick={() => handleViewLocation(player)}
+                                >
+                                  📍 LOCATION
+                                </button>
+                              )}
+                              {isPredefPlayer && game.status !== 'active' && (
+                                <div className="player-waiting-indicator">
+                                  <span style={{ color: '#0066CC', fontSize: '0.9rem' }}>
+                                    ⏳ WAITING FOR GAME START
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+                      <div className="no-games-icon">👥</div>
+                      <div className="no-games-title">NO PLAYERS JOINED</div>
+                      <div className="no-games-subtitle">No players have joined the game yet</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* QR Codes Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>MISSION QR CODES</h4>
+                  <div className="game-code">FUGITIVE TASKS: {game.tasks?.length || 0}/6</div>
+                </div>
+                <div className="status-badge-enhanced setup">
+                  {game.tasks?.length || 0} QR CODES
+                </div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                <QRCodesDisplay gameId={game._id || game.id} />
+              </div>
             </div>
           </div>
         </div>
@@ -915,77 +1341,146 @@ const AdminDashboard = () => {
 
   const renderAllGames = () => (
     <div className="admin-content">
-      <div className="game-header">
-        <h2>🗂️ All Games Database</h2>
-        <p>Super Admin view - Manage all games in the system</p>
+      <div className="klopjacht-header">
+        <div className="header-title">
+          <h2>KLOPJACHT: YOUR GAMES</h2>
+          <div className="header-subtitle">COMPLETE GAMES MANAGEMENT SYSTEM</div>
+        </div>
+        <div className="header-actions">
+          <button 
+            className="btn btn-primary btn-large"
+            onClick={handleCreateGame}
+          >
+            🎮 CREATE NEW GAME
+          </button>
+        </div>
       </div>
       
-      <div className="games-management">
-        <div className="games-stats">
-          <div className="stat-card">
-            <h4>Total Games</h4>
+      <div className="klopjacht-stats">
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">🎯</div>
+          <div className="stat-content">
             <div className="stat-number">{games.length}</div>
-          </div>
-          <div className="stat-card">
-            <h4>Active Games</h4>
-            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'active').length : 0}</div>
-          </div>
-          <div className="stat-card">
-            <h4>Completed Games</h4>
-            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'completed').length : 0}</div>
+            <div className="stat-label">TOTAL GAMES</div>
           </div>
         </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">⚡</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'active').length : 0}</div>
+            <div className="stat-label">ACTIVE GAMES</div>
+          </div>
+        </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">🏁</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'completed').length : 0}</div>
+            <div className="stat-label">COMPLETED</div>
+          </div>
+        </div>
+        <div className="stat-card-enhanced">
+          <div className="stat-icon">⏸️</div>
+          <div className="stat-content">
+            <div className="stat-number">{Array.isArray(games) ? games.filter(g => g.status === 'paused').length : 0}</div>
+            <div className="stat-label">PAUSED</div>
+          </div>
+        </div>
+      </div>
 
-        <div className="games-table">
-          <h3>All Games</h3>
-          {games.length === 0 ? (
-            <div className="no-games">No games found in database</div>
-          ) : (
-            <div className="games-grid">
-              {Array.isArray(games) ? games.map(game => (
-                <div key={game._id || game.id} className="game-card">
-                  <div className="game-card-header">
+      <div className="klopjacht-games-section">
+        <div className="section-header">
+          <h3>ALL GAMES</h3>
+          <div className="section-subtitle">Manage and monitor all KLOPJACHT games</div>
+        </div>
+        
+        {games.length === 0 ? (
+          <div className="no-games-enhanced">
+            <div className="no-games-icon">🎮</div>
+            <div className="no-games-title">NO GAMES FOUND</div>
+            <div className="no-games-subtitle">Create your first KLOPJACHT game to get started</div>
+            <button 
+              className="btn btn-primary btn-large"
+              onClick={handleCreateGame}
+              style={{ marginTop: '1rem' }}
+            >
+              🎮 CREATE FIRST GAME
+            </button>
+          </div>
+        ) : (
+          <div className="klopjacht-games-grid">
+            {Array.isArray(games) ? games.map(game => (
+              <div key={game._id || game.id} className="klopjacht-game-card">
+                <div className="game-card-header-enhanced">
+                  <div className="game-title">
                     <h4>{game.name}</h4>
-                    <span className={`status-badge ${game.status}`}>{game.status}</span>
+                    <div className="game-code">#{game.gameCode}</div>
                   </div>
-                  <div className="game-card-body">
-                    <div><strong>Code:</strong> {game.gameCode}</div>
-                    <div><strong>Created:</strong> {new Date(game.createdAt).toLocaleDateString()}</div>
-                    <div><strong>Duration:</strong> {game.duration} minutes</div>
-                    <div><strong>Players:</strong> {game.playerCounts?.fugitives + game.playerCounts?.hunters || 0}/{game.maxPlayers}</div>
-                    <div><strong>Created by:</strong> {game.createdBy?.name || 'Unknown'}</div>
+                  <div className={`status-badge-enhanced ${game.status}`}>
+                    {game.status?.toUpperCase() || 'UNKNOWN'}
                   </div>
-                  <div className="game-card-actions">
-                    <button 
-                      className="btn-small btn-primary" 
-                      onClick={() => handleViewGame(game.gameCode)}
-                    >
-                      View Details
-                    </button>
-                    <button 
-                      className="btn-small btn-info" 
-                      onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
-                    >
-                      👥 Manage Players
-                    </button>
-                    <button 
-                      className="btn-small btn-danger" 
-                      onClick={() => handleDeleteGame(game._id || game.id, game.name)}
-                      disabled={game.status === 'active'}
-                    >
-                      🗑️ Delete
-                    </button>
+                </div>
+                
+                <div className="game-card-body-enhanced">
+                  <div className="game-info-grid">
+                    <div className="info-item">
+                      <div className="info-label">CREATED</div>
+                      <div className="info-value">{new Date(game.createdAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="info-item">
+                      <div className="info-label">DURATION</div>
+                      <div className="info-value">{game.duration}min</div>
+                    </div>
+                    <div className="info-item">
+                      <div className="info-label">PLAYERS</div>
+                      <div className="info-value">{game.predefinedPlayers?.length || 0}/{game.maxPlayers || game.settings?.maxPlayers || 20}</div>
+                    </div>
+                    <div className="info-item">
+                      <div className="info-label">CREATOR</div>
+                      <div className="info-value">{game.createdBy?.name || 'Unknown'}</div>
+                    </div>
                   </div>
+                  
                   {game.status === 'active' && (
-                    <div className="active-game-notice">
-                      <small>⚠️ Cannot delete active games</small>
+                    <div className="game-timer">
+                      <div className="timer-label">TIME REMAINING</div>
+                      <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
                     </div>
                   )}
                 </div>
-              )) : null}
-            </div>
-          )}
-        </div>
+                
+                <div className="game-card-actions-enhanced">
+                  <button 
+                    className="btn-enhanced btn-primary-enhanced" 
+                    onClick={() => handleViewGame(game.gameCode)}
+                  >
+                    📊 DETAILS
+                  </button>
+                  <button 
+                    className="btn-enhanced btn-info-enhanced" 
+                    onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
+                  >
+                    👥 PLAYERS
+                  </button>
+                  <button 
+                    className="btn-enhanced btn-danger-enhanced" 
+                    onClick={() => handleDeleteGame(game._id || game.id, game.name)}
+                    disabled={game.status === 'active'}
+                    title={game.status === 'active' ? 'Cannot delete active games' : 'Delete this game permanently'}
+                  >
+                    🗑️ DELETE
+                  </button>
+                </div>
+                
+                {game.status === 'active' && (
+                  <div className="active-game-indicator">
+                    <div className="pulse-dot"></div>
+                    LIVE GAME IN PROGRESS
+                  </div>
+                )}
+              </div>
+            )) : null}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1071,8 +1566,8 @@ const AdminDashboard = () => {
             name: gameData.name,
             duration: gameData.duration,
             extractionPoint: {
-              latitude: gameData.extractionPoint.lat,
-              longitude: gameData.extractionPoint.lng,
+              latitude: parseFloat(gameData.extractionPoint.lat.toString()),
+              longitude: parseFloat(gameData.extractionPoint.lng.toString()),
               address: gameData.extractionPoint.address
             },
             settings: {
@@ -1080,7 +1575,7 @@ const AdminDashboard = () => {
             }
           };
 
-          const gameResponse = await fetch(`http://localhost:5000/api/games/${editingGameId}`, {
+          const gameResponse = await fetch(API_ENDPOINTS.GAME_BY_ID(editingGameId), {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -1117,7 +1612,7 @@ const AdminDashboard = () => {
             }))
           };
 
-          const tasksResponse = await fetch(`http://localhost:5000/api/games/${editingGameId}/tasks`, {
+          const tasksResponse = await fetch(API_ENDPOINTS.GAME_TASKS(editingGameId), {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -1162,8 +1657,8 @@ const AdminDashboard = () => {
             name: gameData.name,
             duration: gameData.duration,
             extractionPoint: {
-              latitude: gameData.extractionPoint.lat,
-              longitude: gameData.extractionPoint.lng,
+              latitude: parseFloat(gameData.extractionPoint.lat.toString()),
+              longitude: parseFloat(gameData.extractionPoint.lng.toString()),
               address: gameData.extractionPoint.address
             },
             settings: {
@@ -1171,7 +1666,16 @@ const AdminDashboard = () => {
             }
           };
 
-          const gameResponse = await fetch('http://localhost:5000/api/games', {
+          // SUPER VISIBLE DEBUGGING
+          alert('🔍 DEBUGGING: About to send game data to backend!');
+          console.log('🔍 DEBUGGING: SENDING GAME DATA TO BACKEND:', JSON.stringify(basicGameData, null, 2));
+          console.log('🔍 DEBUGGING: API_ENDPOINTS.GAMES:', API_ENDPOINTS.GAMES);
+          console.log('🔍 DEBUGGING: Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
+          
+          // Show the data in an alert too
+          alert(`🔍 DEBUGGING: Game Data:\n${JSON.stringify(basicGameData, null, 2)}\n\nAPI Endpoint: ${API_ENDPOINTS.GAMES}\n\nToken: ${localStorage.getItem('token') ? 'Present' : 'Missing'}`);
+
+          const gameResponse = await fetch(API_ENDPOINTS.GAMES, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1180,9 +1684,22 @@ const AdminDashboard = () => {
             body: JSON.stringify(basicGameData)
           });
 
+          console.log('🔍 DEBUGGING: Game response status:', gameResponse.status);
+          console.log('🔍 DEBUGGING: Game response ok:', gameResponse.ok);
+          alert(`🔍 DEBUGGING: Response Status: ${gameResponse.status}, OK: ${gameResponse.ok}`);
+
           if (!gameResponse.ok) {
             const errorData = await gameResponse.json();
-            console.error('Game creation error:', errorData);
+            console.error('🔍 DEBUGGING: Game creation error:', errorData);
+            console.error('🔍 DEBUGGING: Full error response:', {
+              status: gameResponse.status,
+              statusText: gameResponse.statusText,
+              headers: Object.fromEntries(gameResponse.headers.entries()),
+              errorData
+            });
+            
+            // Show error in alert
+            alert(`🔍 DEBUGGING: ERROR DETAILS:\nStatus: ${gameResponse.status}\nError: ${JSON.stringify(errorData, null, 2)}`);
             
             // Handle invalid token - redirect to login
             if (errorData.code === 'INVALID_TOKEN' || errorData.error === 'Invalid token') {
@@ -1203,14 +1720,14 @@ const AdminDashboard = () => {
               question: task.question,
               answer: task.answer,
               location: {
-                latitude: task.location.lat,
-                longitude: task.location.lng,
+                latitude: parseFloat(task.location.lat.toString()),
+                longitude: parseFloat(task.location.lng.toString()),
                 address: task.location.address
               }
             }))
           };
 
-          const tasksResponse = await fetch(`http://localhost:5000/api/games/${newGame.game.id}/tasks`, {
+          const tasksResponse = await fetch(API_ENDPOINTS.GAME_TASKS(newGame.game.id), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

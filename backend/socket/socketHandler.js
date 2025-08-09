@@ -389,7 +389,7 @@ function socketHandler(io) {
     } catch (error) {
       console.error('Cleanup error:', error);
     }
-  }, 60000); // Run every minute
+  }, 300000); // Run every 5 minutes
 
   console.log('Socket.IO handler initialized');
 }
