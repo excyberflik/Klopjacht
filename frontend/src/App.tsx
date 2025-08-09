@@ -4,7 +4,9 @@ import HomePage from './pages/HomePage';
 import JoinGamePage from './pages/JoinGamePage';
 import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/AdminDashboard';
+import UserManagement from './pages/UserManagement';
 import GamePage from './pages/GamePage';
+import ManagePlayersPage from './pages/ManagePlayersPage';
 import './App.css';
 
 function App() {
@@ -16,7 +18,9 @@ function App() {
           <Route path="/join" element={<JoinGamePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/user-management" element={<UserManagement />} />
           <Route path="/game/:gameId" element={<GamePage />} />
+          <Route path="/manage-players/:gameId" element={<ManagePlayersPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

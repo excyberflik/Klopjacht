@@ -25,7 +25,12 @@ const registerValidation = [
     .optional()
     .trim()
     .isLength({ max: 100 })
-    .withMessage('Organization name must be less than 100 characters')
+    .withMessage('Organization name must be less than 100 characters'),
+  body('club')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Club name must be less than 100 characters')
 ];
 
 const loginValidation = [
@@ -41,7 +46,7 @@ const loginValidation = [
 // @route   POST /api/auth/register
 // @desc    Register a new user (admin only, except for super admin creation)
 // @access  Private (Super Admin only)
-router.post('/register', requireSuperAdmin, registerValidation, asyncHandler(async (req, res) => {
+router.post('/register', authenticateToken, requireSuperAdmin, registerValidation, asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -50,7 +55,7 @@ router.post('/register', requireSuperAdmin, registerValidation, asyncHandler(asy
     });
   }
 
-  const { email, password, name, organization, role = 'admin' } = req.body;
+  const { email, password, name, organization, club, role = 'game_lead' } = req.body;
 
   // Check if user already exists
   const existingUser = await User.findOne({ email });
@@ -63,12 +68,23 @@ router.post('/register', requireSuperAdmin, registerValidation, asyncHandler(asy
     throw new AppError('Only super admin can create other super admins', 403, 'INSUFFICIENT_PERMISSIONS');
   }
 
+  // Validate role permissions
+  const allowedRoles = ['game_lead', 'admin'];
+  if (req.user.role === 'super_admin') {
+    allowedRoles.push('super_admin');
+  }
+  
+  if (!allowedRoles.includes(role)) {
+    throw new AppError(`Cannot create user with role: ${role}`, 403, 'INVALID_ROLE');
+  }
+
   // Create new user
   const user = new User({
     email,
     password,
     name,
     organization,
+    club,
     role,
     createdBy: req.user._id
   });

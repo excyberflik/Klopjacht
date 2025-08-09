@@ -287,12 +287,27 @@ router.delete('/users/:id', authenticateToken, requireSuperAdmin, asyncHandler(a
     throw new AppError('Cannot delete super admin accounts', 400, 'CANNOT_DELETE_SUPER_ADMIN');
   }
 
-  // Soft delete
+  // Soft delete the user
   user.isActive = false;
   await user.save();
 
+  // Also soft delete all games created by this user
+  await Game.updateMany(
+    { createdBy: user._id },
+    { isActive: false }
+  );
+
+  // Also remove all players from games created by this user
+  const userGames = await Game.find({ createdBy: user._id }).select('_id');
+  const gameIds = userGames.map(game => game._id);
+  
+  if (gameIds.length > 0) {
+    await Player.deleteMany({ game: { $in: gameIds } });
+  }
+
   res.json({
-    message: 'User deactivated successfully'
+    message: 'User and associated games deactivated successfully',
+    gamesAffected: gameIds.length
   });
 }));
 

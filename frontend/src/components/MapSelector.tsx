@@ -43,42 +43,100 @@ function LocationMarker({ onLocationSelect }: { onLocationSelect: (location: Loc
   );
 }
 
-// Mock reverse geocoding function
+// Real reverse geocoding function using OpenStreetMap Nominatim API
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  // In a real implementation, you would use a geocoding service
-  // For now, we'll use mock Amsterdam locations based on coordinates
-  const amsterdamLocations = [
-    { lat: 52.3676, lng: 4.9041, address: 'Dam Square, Amsterdam' },
-    { lat: 52.3702, lng: 4.8952, address: 'Vondelpark, Amsterdam' },
-    { lat: 52.3738, lng: 4.8910, address: 'Museumplein, Amsterdam' },
-    { lat: 52.3731, lng: 4.8922, address: 'Rijksmuseum, Amsterdam' },
-    { lat: 52.3680, lng: 4.9036, address: 'Royal Palace, Amsterdam' },
-    { lat: 52.3792, lng: 4.8994, address: 'Anne Frank House, Amsterdam' },
-    { lat: 52.3676, lng: 4.9041, address: 'Central Station, Amsterdam' },
-    { lat: 52.3667, lng: 4.8945, address: 'Leidseplein, Amsterdam' },
-    { lat: 52.3740, lng: 4.8897, address: 'Van Gogh Museum, Amsterdam' },
-    { lat: 52.3675, lng: 4.9040, address: 'Nieuwmarkt, Amsterdam' },
-  ];
+  try {
+    // Use OpenStreetMap Nominatim API for free reverse geocoding
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      {
+        headers: {
+          'User-Agent': 'Klopjacht-Game-App/1.0'
+        }
+      }
+    );
 
-  // Find the closest location
-  let closestLocation = amsterdamLocations[0];
-  let minDistance = calculateDistance(lat, lng, closestLocation.lat, closestLocation.lng);
+    if (!response.ok) {
+      throw new Error('Geocoding API request failed');
+    }
 
-  for (const location of amsterdamLocations) {
-    const distance = calculateDistance(lat, lng, location.lat, location.lng);
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestLocation = location;
+    const data = await response.json();
+    
+    if (data && data.display_name) {
+      // Extract meaningful address components
+      const address = data.address || {};
+      
+      // Build a clean address string
+      let addressParts = [];
+      
+      // Add house number and street
+      if (address.house_number && address.road) {
+        addressParts.push(`${address.road} ${address.house_number}`);
+      } else if (address.road) {
+        addressParts.push(address.road);
+      }
+      
+      // Add city/town/village
+      if (address.city) {
+        addressParts.push(address.city);
+      } else if (address.town) {
+        addressParts.push(address.town);
+      } else if (address.village) {
+        addressParts.push(address.village);
+      } else if (address.municipality) {
+        addressParts.push(address.municipality);
+      }
+      
+      // Add country
+      if (address.country) {
+        addressParts.push(address.country);
+      }
+      
+      // If we have meaningful address parts, use them
+      if (addressParts.length > 0) {
+        return addressParts.join(', ');
+      }
+      
+      // Otherwise, use the full display name but clean it up
+      let displayName = data.display_name;
+      
+      // Limit length and clean up
+      if (displayName.length > 100) {
+        const parts = displayName.split(', ');
+        displayName = parts.slice(0, 4).join(', ');
+        if (parts.length > 4) {
+          displayName += '...';
+        }
+      }
+      
+      return displayName;
+    }
+    
+    // Fallback if no address found
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    
+  } catch (error) {
+    console.warn('Reverse geocoding failed:', error);
+    
+    // Fallback to basic location detection
+    return getFallbackLocation(lat, lng);
+  }
+}
+
+// Fallback function for when API fails
+function getFallbackLocation(lat: number, lng: number): string {
+  // Basic country/region detection based on coordinates
+  if (lat >= 50.5 && lat <= 53.7 && lng >= 3.0 && lng <= 7.5) {
+    // Netherlands/Belgium area
+    if (lat >= 52.0 && lng >= 4.5) {
+      return `Location in Netherlands (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    } else if (lat <= 51.5 && lng <= 6.0) {
+      return `Location in Belgium (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     }
   }
-
-  // If very close to a known location, use that address
-  if (minDistance < 0.01) {
-    return closestLocation.address;
-  }
-
-  // Otherwise, generate a generic address
-  return `Location near Amsterdam (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  
+  // Generic fallback
+  return `Selected Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
 }
 
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -94,10 +152,56 @@ function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 
 const MapSelector: React.FC<MapSelectorProps> = ({ initialLocation, onLocationSelect, onClose }) => {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(initialLocation || null);
+  const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
 
-  // Default to Amsterdam center
-  const defaultCenter: [number, number] = [52.3676, 4.9041];
-  const center = initialLocation ? [initialLocation.lat, initialLocation.lng] as [number, number] : defaultCenter;
+  // Get user's current location
+  useEffect(() => {
+    if (initialLocation) {
+      setLocationLoading(false);
+      return;
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation([latitude, longitude]);
+          setLocationLoading(false);
+        },
+        (error) => {
+          console.warn('Geolocation failed:', error);
+          // Fallback to Amsterdam if geolocation fails
+          setCurrentLocation([52.3676, 4.9041]);
+          setLocationLoading(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        }
+      );
+    } else {
+      console.warn('Geolocation not supported');
+      // Fallback to Amsterdam if geolocation not supported
+      setCurrentLocation([52.3676, 4.9041]);
+      setLocationLoading(false);
+    }
+  }, [initialLocation]);
+
+  // Determine map center
+  const getMapCenter = (): [number, number] => {
+    if (initialLocation) {
+      return [initialLocation.lat, initialLocation.lng];
+    }
+    if (currentLocation) {
+      return currentLocation;
+    }
+    // Final fallback to Amsterdam
+    return [52.3676, 4.9041];
+  };
+
+  const center = getMapCenter();
 
   const handleLocationSelect = (location: Location) => {
     setSelectedLocation(location);
@@ -118,22 +222,39 @@ const MapSelector: React.FC<MapSelectorProps> = ({ initialLocation, onLocationSe
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         
-        <div className="map-container">
-          <MapContainer
-            center={center}
-            zoom={13}
-            style={{ height: '400px', width: '100%' }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <LocationMarker onLocationSelect={handleLocationSelect} />
-            {selectedLocation && (
-              <Marker position={[selectedLocation.lat, selectedLocation.lng]} />
-            )}
-          </MapContainer>
-        </div>
+        {locationLoading ? (
+          <div className="map-loading" style={{ 
+            height: '400px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            backgroundColor: '#f5f5f5',
+            color: '#666'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🌍</div>
+              <div>Getting your location...</div>
+              <small>This helps center the map near you</small>
+            </div>
+          </div>
+        ) : (
+          <div className="map-container">
+            <MapContainer
+              center={center}
+              zoom={13}
+              style={{ height: '400px', width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <LocationMarker onLocationSelect={handleLocationSelect} />
+              {selectedLocation && (
+                <Marker position={[selectedLocation.lat, selectedLocation.lng]} />
+              )}
+            </MapContainer>
+          </div>
+        )}
 
         <div className="map-selector-info">
           {selectedLocation ? (
@@ -144,7 +265,7 @@ const MapSelector: React.FC<MapSelectorProps> = ({ initialLocation, onLocationSe
             </div>
           ) : (
             <div className="no-selection">
-              Click on the map to select a location
+              {locationLoading ? 'Preparing map...' : 'Click on the map to select a location'}
             </div>
           )}
         </div>

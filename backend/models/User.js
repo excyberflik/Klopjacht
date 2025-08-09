@@ -22,10 +22,14 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['super_admin', 'admin', 'game_master', 'player'],
+    enum: ['super_admin', 'admin', 'game_lead', 'game_master', 'player'],
     default: 'player'
   },
   organization: {
+    type: String,
+    trim: true
+  },
+  club: {
     type: String,
     trim: true
   },

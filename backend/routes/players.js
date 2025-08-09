@@ -49,6 +49,71 @@ const updateLocationValidation = [
     .withMessage('Invalid trigger type')
 ];
 
+// @route   POST /api/players/restore-session
+// @desc    Restore existing player session
+// @access  Public
+router.post('/restore-session', [
+  body('playerId')
+    .isMongoId()
+    .withMessage('Valid player ID is required'),
+  body('gameCode')
+    .trim()
+    .isLength({ min: 6, max: 6 })
+    .withMessage('Game code must be exactly 6 characters')
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: errors.array()
+    });
+  }
+
+  const { playerId, gameCode } = req.body;
+
+  // Find the player
+  const player = await Player.findById(playerId).populate('game');
+  
+  if (!player) {
+    throw new AppError('Player session not found', 404, 'PLAYER_NOT_FOUND');
+  }
+
+  // Verify the game code matches
+  if (player.game.gameCode !== gameCode.toUpperCase()) {
+    throw new AppError('Invalid session for this game', 400, 'INVALID_SESSION');
+  }
+
+  // Check if game is still active/joinable
+  if (player.game.status === 'cancelled') {
+    throw new AppError('Game has been cancelled', 400, 'GAME_CANCELLED');
+  }
+
+  // Update player's last seen time
+  player.lastSeen = new Date();
+  await player.save();
+
+  res.json({
+    message: 'Session restored successfully',
+    player: {
+      id: player._id,
+      name: player.name,
+      role: player.role,
+      status: player.status,
+      team: player.team,
+      completedTasks: player.completedTasks.length,
+      currentLocation: player.currentLocation
+    },
+    game: {
+      id: player.game._id,
+      name: player.game.name,
+      gameCode: player.game.gameCode,
+      status: player.game.status,
+      startTime: player.game.startTime,
+      endTime: player.game.endTime
+    }
+  });
+}));
+
 // @route   POST /api/players/join
 // @desc    Join a game as a player
 // @access  Public
@@ -61,7 +126,7 @@ router.post('/join', joinGameValidation, asyncHandler(async (req, res) => {
     });
   }
 
-  const { gameCode, name, role, email, phoneNumber, team } = req.body;
+  const { gameCode, name, role, email, phoneNumber, team, predefinedPlayerId, password } = req.body;
 
   // Find the game
   const game = await Game.findOne({ 
@@ -78,24 +143,7 @@ router.post('/join', joinGameValidation, asyncHandler(async (req, res) => {
     throw new AppError('Game is no longer accepting players', 400, 'GAME_CLOSED');
   }
 
-  // Check player limit
-  const currentPlayerCount = await Player.countDocuments({ game: game._id });
-  if (currentPlayerCount >= game.settings.maxPlayers) {
-    throw new AppError('Game is full', 400, 'GAME_FULL');
-  }
-
-  // Check if player with same name already exists in this game
-  const existingPlayer = await Player.findOne({ 
-    game: game._id, 
-    name: name.trim() 
-  });
-
-  if (existingPlayer) {
-    throw new AppError('A player with this name already exists in the game', 409, 'PLAYER_NAME_EXISTS');
-  }
-
-  // Create new player
-  const player = new Player({
+  let playerData = {
     name: name.trim(),
     email,
     phoneNumber,
@@ -108,24 +156,174 @@ router.post('/join', joinGameValidation, asyncHandler(async (req, res) => {
       platform: req.get('Sec-CH-UA-Platform'),
       timezone: req.body.timezone
     }
-  });
+  };
 
-  await player.save();
+  // If joining with a predefined player slot
+  if (predefinedPlayerId) {
+    const predefinedPlayer = game.predefinedPlayers.id(predefinedPlayerId);
+    
+    if (!predefinedPlayer) {
+      throw new AppError('Predefined player slot not found', 404, 'PREDEFINED_PLAYER_NOT_FOUND');
+    }
 
-  res.status(201).json({
-    message: 'Successfully joined the game',
-    player: {
-      id: player._id,
-      name: player.name,
-      role: player.role,
-      status: player.status,
-      team: player.team
-    },
-    game: {
-      id: game._id,
-      name: game.name,
-      gameCode: game.gameCode,
-      status: game.status
+    // Check if player is trying to rejoin with correct password
+    if (predefinedPlayer.isJoined) {
+      if (!password || password.trim() !== predefinedPlayer.password) {
+        throw new AppError('Invalid password for this player slot', 401, 'INVALID_PASSWORD');
+      }
+      
+      // Find existing player and allow rejoin
+      const existingPlayer = await Player.findById(predefinedPlayer.playerId);
+      if (existingPlayer) {
+        // Update player's last seen time and status
+        existingPlayer.lastSeen = new Date();
+        existingPlayer.status = game.status === 'active' ? 'active' : 'waiting';
+        await existingPlayer.save();
+        
+        return res.json({
+          message: 'Successfully rejoined the game',
+          player: {
+            id: existingPlayer._id,
+            name: existingPlayer.name,
+            role: existingPlayer.role,
+            status: existingPlayer.status,
+            team: existingPlayer.team
+          },
+          game: {
+            id: game._id,
+            name: game.name,
+            gameCode: game.gameCode,
+            status: game.status
+          }
+        });
+      }
+    }
+    
+    // For new joins, validate password
+    if (!password || password.trim() !== predefinedPlayer.password) {
+      throw new AppError('Invalid password for this player slot', 401, 'INVALID_PASSWORD');
+    }
+
+    // Use predefined player data
+    playerData.name = predefinedPlayer.name;
+    playerData.role = predefinedPlayer.role;
+    playerData.team = predefinedPlayer.team;
+
+    // Create new player
+    const player = new Player(playerData);
+    await player.save();
+
+    // Mark predefined player as joined
+    predefinedPlayer.isJoined = true;
+    predefinedPlayer.playerId = player._id;
+    await game.save();
+
+    res.status(201).json({
+      message: 'Successfully joined the game',
+      player: {
+        id: player._id,
+        name: player.name,
+        role: player.role,
+        status: player.status,
+        team: player.team
+      },
+      game: {
+        id: game._id,
+        name: game.name,
+        gameCode: game.gameCode,
+        status: game.status
+      }
+    });
+  } else {
+    // Traditional join process (without predefined slot)
+    
+    // Check player limit
+    const currentPlayerCount = await Player.countDocuments({ game: game._id });
+    if (currentPlayerCount >= game.settings.maxPlayers) {
+      throw new AppError('Game is full', 400, 'GAME_FULL');
+    }
+
+    // Check if player with same name already exists in this game
+    const existingPlayer = await Player.findOne({ 
+      game: game._id, 
+      name: name.trim() 
+    });
+
+    if (existingPlayer) {
+      throw new AppError('A player with this name already exists in the game', 409, 'PLAYER_NAME_EXISTS');
+    }
+
+    // Create new player
+    const player = new Player(playerData);
+    await player.save();
+
+    res.status(201).json({
+      message: 'Successfully joined the game',
+      player: {
+        id: player._id,
+        name: player.name,
+        role: player.role,
+        status: player.status,
+        team: player.team
+      },
+      game: {
+        id: game._id,
+        name: game.name,
+        gameCode: game.gameCode,
+        status: game.status
+      }
+    });
+  }
+}));
+
+// @route   GET /api/players
+// @desc    Get all players (for admin dashboard)
+// @access  Private (Admin only)
+router.get('/', authenticateToken, asyncHandler(async (req, res) => {
+  // Only allow admins and super admins to see all players
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
+    throw new AppError('Access denied', 403, 'ACCESS_DENIED');
+  }
+
+  const { status, role, gameId } = req.query;
+  
+  let query = {};
+  
+  if (status) query.status = status;
+  if (role) query.role = role;
+  if (gameId) query.game = gameId;
+
+  const players = await Player.find(query)
+    .populate('game', 'name gameCode status')
+    .sort({ createdAt: -1 });
+
+  // Group players by role and status
+  const playersByRole = {
+    fugitives: players.filter(p => p.role === 'fugitive'),
+    hunters: players.filter(p => p.role === 'hunter'),
+    spectators: players.filter(p => p.role === 'spectator')
+  };
+
+  const playersByStatus = {
+    active: players.filter(p => p.status === 'active'),
+    waiting: players.filter(p => p.status === 'waiting'),
+    caught: players.filter(p => p.status === 'caught'),
+    escaped: players.filter(p => p.status === 'escaped'),
+    disconnected: players.filter(p => p.status === 'disconnected')
+  };
+
+  res.json({
+    players,
+    playersByRole,
+    playersByStatus,
+    counts: {
+      total: players.length,
+      fugitives: playersByRole.fugitives.length,
+      hunters: playersByRole.hunters.length,
+      spectators: playersByRole.spectators.length,
+      active: playersByStatus.active.length,
+      waiting: playersByStatus.waiting.length,
+      online: players.filter(p => p.isOnline).length
     }
   });
 }));

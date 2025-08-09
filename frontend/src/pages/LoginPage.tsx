@@ -3,14 +3,42 @@ import { useNavigate } from 'react-router-dom';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@klopjacht.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      // For demo purposes, navigate to admin dashboard
-      navigate('/admin');
+    
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Store the JWT token and user info in localStorage
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('userRole', data.user.role);
+        localStorage.setItem('userName', data.user.name);
+        localStorage.setItem('userEmail', data.user.email);
+        
+        console.log('Login successful:', data.user);
+        console.log('User role stored:', data.user.role);
+        
+        // Navigate to admin dashboard
+        navigate('/admin');
+      } else {
+        const errorData = await response.json();
+        alert(`Login failed: ${errorData.error || 'Invalid credentials'}`);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Login failed. Please check your connection and try again.');
     }
   };
 
@@ -31,7 +59,7 @@ const LoginPage = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@klopjacht.com"
+              placeholder="Enter your email"
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -75,11 +103,6 @@ const LoginPage = () => {
           </div>
         </form>
         
-        <div style={{ marginTop: '2rem', fontSize: '0.9rem', color: '#888' }}>
-          <p>Demo credentials:</p>
-          <p>Email: admin@klopjacht.com</p>
-          <p>Password: SuperAdmin123!</p>
-        </div>
       </header>
     </div>
   );

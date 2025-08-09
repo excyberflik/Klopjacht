@@ -9,50 +9,41 @@ const HomePage: React.FC = () => {
     navigate('/join');
   };
 
-  const handleAdminPanel = () => {
+  const handleAdminPortal = () => {
     navigate('/login');
   };
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>🔍 Klopjacht</h1>
-        <p>Interactive outdoor chase game</p>
-        <div className="game-features">
-          <div className="feature">
-            <h3>For Fugitives</h3>
-            <ul>
-              <li>Complete 6 missions</li>
-              <li>Scan QR codes</li>
-              <li>Reach extraction point</li>
-            </ul>
-          </div>
-          <div className="feature">
-            <h3>For Hunters</h3>
-            <ul>
-              <li>Track fugitives</li>
-              <li>Real-time updates</li>
-              <li>Prevent escape</li>
-            </ul>
-          </div>
-          <div className="feature">
-            <h3>For Game Masters</h3>
-            <ul>
-              <li>Create games</li>
-              <li>Set tasks & locations</li>
-              <li>Monitor progress</li>
-            </ul>
+      <div className="landing-page">
+        <div className="logo-container">
+          <img 
+            src="/klopjacht-logo.png" 
+            alt="KLOPJACHT - Interactive Outdoor Chase Game" 
+            className="main-logo"
+            onError={(e) => {
+              // Fallback if logo image is not found
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const fallback = target.nextElementSibling as HTMLElement;
+              if (fallback) fallback.style.display = 'block';
+            }}
+          />
+          <div className="logo-fallback" style={{ display: 'none' }}>
+            <h1 className="logo-text">KLOPJACHT</h1>
+            <p className="logo-subtitle">INTERACTIVE OUTDOOR CHASE GAME</p>
           </div>
         </div>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={handleJoinGame}>
-            Join Game
+        
+        <div className="main-actions">
+          <button className="btn btn-primary btn-large" onClick={handleJoinGame}>
+            🎮 Join Game
           </button>
-          <button className="btn btn-secondary" onClick={handleAdminPanel}>
-            Admin Panel
+          <button className="btn btn-secondary btn-large" onClick={handleAdminPortal}>
+            🔧 Admin Portal
           </button>
         </div>
-      </header>
+      </div>
     </div>
   );
 };

@@ -84,6 +84,9 @@ const requireSuperAdmin = requireRoles('super_admin');
 // Middleware to check if user is admin or super admin
 const requireAdmin = requireRoles('super_admin', 'admin');
 
+// Middleware to check if user is game lead, admin, or super admin
+const requireGameLead = requireRoles('super_admin', 'admin', 'game_lead');
+
 // Middleware to check if user is game master, admin, or super admin
 const requireGameMaster = requireRoles('super_admin', 'admin', 'game_master');
 
@@ -194,6 +197,7 @@ module.exports = {
   requireRoles,
   requireSuperAdmin,
   requireAdmin,
+  requireGameLead,
   requireGameMaster,
   requireOwnershipOrAdmin,
   optionalAuth,

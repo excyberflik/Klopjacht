@@ -56,7 +56,6 @@ const taskSchema = new mongoose.Schema({
 const gameSchema = new mongoose.Schema({
   gameCode: {
     type: String,
-    required: true,
     unique: true,
     uppercase: true,
     length: 6
@@ -115,6 +114,46 @@ const gameSchema = new mongoose.Schema({
   endTime: {
     type: Date
   },
+  pausedAt: {
+    type: Date
+  },
+  resumedAt: {
+    type: Date
+  },
+  predefinedPlayers: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    role: {
+      type: String,
+      enum: ['fugitive', 'hunter', 'spectator'],
+      required: true
+    },
+    team: {
+      type: String,
+      trim: true
+    },
+    password: {
+      type: String,
+      required: false, // Make optional to support existing data
+      trim: true,
+      default: '' // Provide default for existing records
+    },
+    isJoined: {
+      type: Boolean,
+      default: false
+    },
+    playerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player'
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   settings: {
     locationUpdateInterval: {
       type: Number,
@@ -167,7 +206,7 @@ const gameSchema = new mongoose.Schema({
     },
     gameEndReason: {
       type: String,
-      enum: ['time_up', 'all_fugitives_caught', 'fugitives_escaped', 'cancelled']
+      enum: ['time_up', 'all_fugitives_caught', 'fugitives_escaped', 'cancelled', 'manual']
     }
   },
   isActive: {
