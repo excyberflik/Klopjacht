@@ -140,29 +140,46 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
                   const originalText = button.innerHTML;
                   const originalBgColor = button.style.backgroundColor;
                   
-                  // Generate simple 6-digit code based on gameId and task number
-                  const simpleCode = (() => {
-                    // Create a hash from gameId and task number for consistency
-                    const hashInput = `${gameId}-${task.taskNumber}`;
-                    let hash = 0;
+                  // Generate secure 6-digit code based on gameId and task number
+                  const secureCode = (() => {
+                    // Create a more complex hash with multiple rounds and salt
+                    const salt = 'KLOPJACHT_SECURE_2024';
+                    const hashInput = `${salt}-${gameId}-TASK-${task.taskNumber}-${salt}`;
+                    
+                    // Multiple hash rounds for better randomization
+                    let hash1 = 0;
+                    let hash2 = 0;
+                    
+                    // First hash round
                     for (let i = 0; i < hashInput.length; i++) {
                       const char = hashInput.charCodeAt(i);
-                      hash = ((hash << 5) - hash) + char;
-                      hash = hash & hash; // Convert to 32-bit integer
+                      hash1 = ((hash1 << 7) - hash1) + char;
+                      hash1 = hash1 & hash1; // Convert to 32-bit integer
                     }
-                    // Convert to positive 6-digit number
-                    const sixDigitCode = Math.abs(hash % 900000) + 100000;
+                    
+                    // Second hash round with different algorithm
+                    const reversedInput = hashInput.split('').reverse().join('');
+                    for (let i = 0; i < reversedInput.length; i++) {
+                      const char = reversedInput.charCodeAt(i);
+                      hash2 = ((hash2 << 3) + hash2) ^ char;
+                      hash2 = hash2 & hash2; // Convert to 32-bit integer
+                    }
+                    
+                    // Combine hashes and add task-specific multiplier
+                    const combined = Math.abs(hash1 ^ hash2) * (task.taskNumber * 7919); // 7919 is a prime
+                    const sixDigitCode = (combined % 900000) + 100000;
+                    
                     return sixDigitCode.toString();
                   })();
                   
                   try {
                     // Try modern clipboard API first
                     if (navigator.clipboard && window.isSecureContext) {
-                      await navigator.clipboard.writeText(simpleCode);
+                      await navigator.clipboard.writeText(secureCode);
                     } else {
                       // Fallback for older browsers or non-HTTPS
                       const textArea = document.createElement('textarea');
-                      textArea.value = simpleCode;
+                      textArea.value = secureCode;
                       textArea.style.position = 'fixed';
                       textArea.style.left = '-999999px';
                       textArea.style.top = '-999999px';
@@ -221,16 +238,33 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
               letterSpacing: '0.2em'
             }}>
               {(() => {
-                // Generate the same 6-digit code for display
-                const hashInput = `${gameId}-${task.taskNumber}`;
-                let hash = 0;
+                // Generate the same secure 6-digit code for display
+                const salt = 'KLOPJACHT_SECURE_2024';
+                const hashInput = `${salt}-${gameId}-TASK-${task.taskNumber}-${salt}`;
+                
+                // Multiple hash rounds for better randomization
+                let hash1 = 0;
+                let hash2 = 0;
+                
+                // First hash round
                 for (let i = 0; i < hashInput.length; i++) {
                   const char = hashInput.charCodeAt(i);
-                  hash = ((hash << 5) - hash) + char;
-                  hash = hash & hash; // Convert to 32-bit integer
+                  hash1 = ((hash1 << 7) - hash1) + char;
+                  hash1 = hash1 & hash1; // Convert to 32-bit integer
                 }
-                // Convert to positive 6-digit number
-                const sixDigitCode = Math.abs(hash % 900000) + 100000;
+                
+                // Second hash round with different algorithm
+                const reversedInput = hashInput.split('').reverse().join('');
+                for (let i = 0; i < reversedInput.length; i++) {
+                  const char = reversedInput.charCodeAt(i);
+                  hash2 = ((hash2 << 3) + hash2) ^ char;
+                  hash2 = hash2 & hash2; // Convert to 32-bit integer
+                }
+                
+                // Combine hashes and add task-specific multiplier
+                const combined = Math.abs(hash1 ^ hash2) * (task.taskNumber * 7919); // 7919 is a prime
+                const sixDigitCode = (combined % 900000) + 100000;
+                
                 return sixDigitCode.toString();
               })()}
             </div>
@@ -859,13 +893,47 @@ const AdminDashboard = () => {
       setLoading(true);
 
       try {
-        // Validate that we have at least some tasks with complete data
-        const completeTasks = gameForm.tasks.filter(task => 
+        // Automatically set Task 6 (extraction point task) to use extraction point location
+        const updatedTasks = gameForm.tasks.map((task, index) => {
+          if (index === 5) { // Task 6 (index 5)
+            return {
+              ...task,
+              location: {
+                lat: gameForm.extractionPoint.lat,
+                lng: gameForm.extractionPoint.lng,
+                address: gameForm.extractionPoint.address
+              }
+            };
+          }
+          return task;
+        });
+
+        // Validate that we have at least some tasks with complete data (including the auto-filled Task 6)
+        const completeTasks = updatedTasks.filter(task => 
           task.question && task.answer && task.location.address
         );
 
+        // If no complete tasks, but we have extraction point, create a default Task 6
+        if (completeTasks.length === 0 && gameForm.extractionPoint.address) {
+          // Create a default complete Task 6 if none exists
+          const defaultTask6 = {
+            id: 6,
+            question: 'Reach the extraction point to complete the mission',
+            answer: 'extracted',
+            location: {
+              lat: gameForm.extractionPoint.lat,
+              lng: gameForm.extractionPoint.lng,
+              address: gameForm.extractionPoint.address
+            }
+          };
+          
+          // Update the tasks array with the default Task 6
+          updatedTasks[5] = defaultTask6;
+          completeTasks.push(defaultTask6);
+        }
+
         if (completeTasks.length === 0) {
-          alert('Please add at least one complete task with question, answer, and location.');
+          alert('Please add at least one complete task with question, answer, and location, or ensure you have set an extraction point.');
           setLoading(false);
           return;
         }
@@ -1280,7 +1348,7 @@ const AdminDashboard = () => {
                   <button 
                     type="submit" 
                     className="btn-enhanced btn-success-enhanced"
-                    disabled={loading || gameForm.tasks.filter(t => t.question && t.answer && t.location.address).length === 0}
+                    disabled={loading}
                   >
                     {loading ? 'CREATING GAME...' : '🎮 CREATE GAME'}
                   </button>

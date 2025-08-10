@@ -628,9 +628,15 @@ router.post('/:id/complete-task', [
     throw new AppError('Game is not active', 400, 'GAME_NOT_ACTIVE');
   }
 
-  // Check if player is active
-  if (player.status !== 'active') {
+  // Check if player is active (allow 'waiting' status if game just started)
+  if (player.status !== 'active' && player.status !== 'waiting') {
     throw new AppError('Player is not active', 400, 'PLAYER_NOT_ACTIVE');
+  }
+
+  // If player is waiting but game is active, update player status
+  if (player.status === 'waiting' && player.game.status === 'active') {
+    player.status = 'active';
+    await player.save();
   }
 
   // Find the task in the game

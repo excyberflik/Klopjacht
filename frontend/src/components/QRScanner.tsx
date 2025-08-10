@@ -144,15 +144,29 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onScanFailure, onC
 
   const handleManualInput = () => {
     const input = prompt(
-      'Enter QR code data manually:\n\n' +
-      'Paste the JSON code from the admin dashboard here.\n' +
-      'It should look like:\n' +
-      '{"gameId":"...","taskNumber":1,"question":"...","taskId":"...","url":"..."}\n\n' +
+      'Enter code manually:\n\n' +
+      'You can enter either:\n' +
+      '1. The 6-digit code from the admin dashboard (e.g., 123456)\n' +
+      '2. The full JSON QR code data\n\n' +
       'Enter the code:'
     );
     if (input && input.trim()) {
       stopCamera();
-      onScanSuccess(input.trim(), { rawValue: input.trim() });
+      
+      const trimmedInput = input.trim();
+      
+      // Check if it's a 6-digit code (manual entry from admin dashboard)
+      if (/^\d{6}$/.test(trimmedInput)) {
+        // Convert 6-digit code to a special format that the game page can recognize
+        const manualCodeData = {
+          type: 'manual_code',
+          code: trimmedInput
+        };
+        onScanSuccess(JSON.stringify(manualCodeData), { rawValue: JSON.stringify(manualCodeData) });
+      } else {
+        // Assume it's full QR code JSON data
+        onScanSuccess(trimmedInput, { rawValue: trimmedInput });
+      }
     }
   };
 

@@ -82,6 +82,7 @@ const GamePage = () => {
   const [timeRemaining, setTimeRemaining] = useState('');
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [timeExpiredNotified, setTimeExpiredNotified] = useState(false);
+  const [showSafetyWarning, setShowSafetyWarning] = useState(true);
 
   // Get player info from localStorage or location state
   useEffect(() => {
@@ -116,26 +117,48 @@ const GamePage = () => {
         const gameResponse = await fetch(API_ENDPOINTS.GAME_BY_CODE(gameId));
         
         if (!gameResponse.ok) {
-          throw new Error('Game not found');
+          if (gameResponse.status === 404) {
+            console.warn('Game not found, may have been deleted or ended');
+            setError('Game not found or has ended');
+            return;
+          }
+          throw new Error(`Failed to fetch game: ${gameResponse.status}`);
         }
         
         const gameInfo = await gameResponse.json();
         const fullGameData = gameInfo.game;
         console.log('Complete game data fetched:', fullGameData);
         
-        // Then get players for this game
-        const playersResponse = await fetch(API_ENDPOINTS.PLAYER_BY_GAME(fullGameData.id));
+        // Check if game status allows playing
+        if (fullGameData.status === 'cancelled' || fullGameData.status === 'completed') {
+          console.warn('Game is no longer playable:', fullGameData.status);
+          setError(`Game has ${fullGameData.status === 'cancelled' ? 'been cancelled' : 'ended'}`);
+          return;
+        }
         
-        if (playersResponse.ok) {
-          const playersData = await playersResponse.json();
-          setGameData({
-            game: fullGameData,
-            players: playersData.players,
-            playersByRole: playersData.playersByRole,
-            counts: playersData.counts
-          });
-        } else {
-          // If we can't get players (auth required), just show game info
+        // Then get players for this game (skip if unauthorized, it's not critical)
+        try {
+          const playersResponse = await fetch(API_ENDPOINTS.PLAYER_BY_GAME(fullGameData.id));
+          
+          if (playersResponse.ok) {
+            const playersData = await playersResponse.json();
+            setGameData({
+              game: fullGameData,
+              players: playersData.players,
+              playersByRole: playersData.playersByRole,
+              counts: playersData.counts
+            });
+          } else {
+            // If we can't get players (auth required), just show game info
+            setGameData({
+              game: fullGameData,
+              players: [],
+              playersByRole: { fugitives: [], hunters: [], spectators: [] },
+              counts: { total: 0, fugitives: 0, hunters: 0, spectators: 0, online: 0 }
+            });
+          }
+        } catch (playersError) {
+          console.warn('Could not fetch players data, continuing with game data only');
           setGameData({
             game: fullGameData,
             players: [],
@@ -148,6 +171,13 @@ const GamePage = () => {
         setError('');
       } catch (err) {
         console.error('Error fetching game data:', err);
+        
+        // Don't immediately show error on network issues, keep trying
+        if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+          console.warn('Network error, will retry on next interval');
+          return;
+        }
+        
         setError('Failed to load game data');
       } finally {
         setLoading(false);
@@ -162,7 +192,7 @@ const GamePage = () => {
     
     // Cleanup interval on unmount
     return () => clearInterval(refreshInterval);
-  }, [gameId]);
+  }, [gameId, gameData]);
 
   // Calculate time remaining
   useEffect(() => {
@@ -315,21 +345,130 @@ const GamePage = () => {
     }
 
     try {
-      // Parse the QR code data
-      let qrData: {
+      // Parse the input data
+      let parsedData: any;
+      
+      try {
+        parsedData = JSON.parse(decodedText);
+      } catch (e) {
+        alert('Invalid code format. Please scan a valid QR code or enter a valid manual code.');
+        return;
+      }
+
+      // Handle manual code entry (6-digit codes from admin dashboard)
+      if (parsedData.type === 'manual_code') {
+        const manualCode = parsedData.code;
+        
+        // Find which task this manual code belongs to by matching the generated hash
+        let matchingTask = null;
+        let matchingTaskNumber = null;
+        
+        for (let taskNum = 1; taskNum <= 6; taskNum++) {
+          // Generate the same secure hash as in the admin dashboard
+          const salt = 'KLOPJACHT_SECURE_2024';
+          const hashInput = `${salt}-${gameData.game.id}-TASK-${taskNum}-${salt}`;
+          
+          // Multiple hash rounds for better randomization
+          let hash1 = 0;
+          let hash2 = 0;
+          
+          // First hash round
+          for (let i = 0; i < hashInput.length; i++) {
+            const char = hashInput.charCodeAt(i);
+            hash1 = ((hash1 << 7) - hash1) + char;
+            hash1 = hash1 & hash1; // Convert to 32-bit integer
+          }
+          
+          // Second hash round with different algorithm
+          const reversedInput = hashInput.split('').reverse().join('');
+          for (let i = 0; i < reversedInput.length; i++) {
+            const char = reversedInput.charCodeAt(i);
+            hash2 = ((hash2 << 3) + hash2) ^ char;
+            hash2 = hash2 & hash2; // Convert to 32-bit integer
+          }
+          
+          // Combine hashes and add task-specific multiplier
+          const combined = Math.abs(hash1 ^ hash2) * (taskNum * 7919); // 7919 is a prime
+          const sixDigitCode = (combined % 900000) + 100000;
+          
+          if (sixDigitCode.toString() === manualCode) {
+            matchingTaskNumber = taskNum;
+            matchingTask = gameData.game.tasks?.find(t => t.taskNumber === taskNum);
+            break;
+          }
+        }
+        
+        if (!matchingTask || !matchingTaskNumber) {
+          alert('Invalid manual code. This code does not match any task in this game.');
+          return;
+        }
+        
+        // Check if player can access this task (sequential completion)
+        const playerCompletedTasks = currentPlayer.tasksCompleted || 0;
+        if (matchingTaskNumber !== playerCompletedTasks + 1) {
+          if (matchingTaskNumber <= playerCompletedTasks) {
+            alert(`You have already completed Task ${matchingTaskNumber}.`);
+          } else {
+            alert(`You must complete Task ${playerCompletedTasks + 1} first before accessing Task ${matchingTaskNumber}.`);
+          }
+          return;
+        }
+        
+        // Show task question and get answer
+        const userAnswer = prompt(`Task ${matchingTaskNumber}:\n\n${matchingTask.question}\n\nEnter your answer:`);
+        
+        if (userAnswer === null) {
+          // User cancelled
+          return;
+        }
+
+        if (!userAnswer.trim()) {
+          alert('Please provide an answer.');
+          return;
+        }
+
+        // Submit the task completion
+        const response = await fetch(API_ENDPOINTS.PLAYER_COMPLETE_TASK(currentPlayer.id), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            taskNumber: matchingTaskNumber,
+            answer: userAnswer.trim(),
+            gameId: gameData.game.id
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          if (result.correct) {
+            alert(`🎉 Correct! Task ${matchingTaskNumber} completed successfully!\n\nTasks completed: ${result.tasksCompleted}/6`);
+            
+            // Update current player data
+            setCurrentPlayer(prev => prev ? {
+              ...prev,
+              tasksCompleted: result.tasksCompleted
+            } : null);
+          } else {
+            alert(`❌ Incorrect answer. Try again!\n\nHint: Make sure you're at the correct location and read the question carefully.`);
+          }
+        } else {
+          alert(`Error: ${result.message || 'Failed to submit task completion'}`);
+        }
+        
+        return;
+      }
+
+      // Handle regular QR code data
+      const qrData: {
         gameId: string;
         taskNumber: number;
         question: string;
         taskId?: string;
         url?: string;
-      };
-      
-      try {
-        qrData = JSON.parse(decodedText);
-      } catch (e) {
-        alert('Invalid QR code format. Please scan a valid task QR code.');
-        return;
-      }
+      } = parsedData;
 
       // Validate QR code structure
       if (!qrData.gameId || !qrData.taskNumber || !qrData.question) {
@@ -520,6 +659,151 @@ const GamePage = () => {
   };
 
   const timeData = getTimeRemainingData();
+
+  // Show safety warning first
+  if (showSafetyWarning) {
+    return (
+      <div className="App safety-warning-page">
+        <div className="safety-warning-container">
+          <div className="klopjacht-logo">
+            <h1>🔍 KLOPJACHT</h1>
+          </div>
+          
+          <div className="safety-warning-content">
+            <div className="warning-icon">⚠️</div>
+            <div className="warning-text">
+              <p>Gelieve tijdens dit spel ALLE verkeersregels in acht te nemen.</p>
+              <p>Breng uzelf en anderen niet in gevaar.</p>
+            </div>
+          </div>
+          
+          <button 
+            className="safety-acknowledge-btn"
+            onClick={() => setShowSafetyWarning(false)}
+          >
+            BEGREPEN
+          </button>
+        </div>
+        
+        <style>{`
+          .safety-warning-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+          }
+          
+          .safety-warning-container {
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.5s ease-out;
+          }
+          
+          @keyframes slideIn {
+            from {
+              opacity: 0;
+              transform: translateY(-50px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          
+          .klopjacht-logo h1 {
+            font-size: 3rem;
+            color: #333;
+            margin: 0 0 2rem 0;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          
+          .safety-warning-content {
+            margin: 2rem 0;
+          }
+          
+          .warning-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: pulse 2s infinite;
+          }
+          
+          @keyframes pulse {
+            0%, 100% {
+              transform: scale(1);
+            }
+            50% {
+              transform: scale(1.1);
+            }
+          }
+          
+          .warning-text {
+            color: #333;
+            font-size: 1.2rem;
+            line-height: 1.6;
+            font-weight: 500;
+            margin-bottom: 2rem;
+          }
+          
+          .warning-text p {
+            margin: 0.5rem 0;
+          }
+          
+          .safety-acknowledge-btn {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 1rem 3rem;
+            font-size: 1.3rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          
+          .safety-acknowledge-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+            background: linear-gradient(135deg, #218838, #1e7e34);
+          }
+          
+          .safety-acknowledge-btn:active {
+            transform: translateY(0);
+          }
+          
+          @media (max-width: 600px) {
+            .safety-warning-container {
+              padding: 2rem;
+              margin: 1rem;
+            }
+            
+            .klopjacht-logo h1 {
+              font-size: 2.5rem;
+            }
+            
+            .warning-text {
+              font-size: 1.1rem;
+            }
+            
+            .safety-acknowledge-btn {
+              padding: 0.8rem 2rem;
+              font-size: 1.1rem;
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="App fugitive-game-page">
