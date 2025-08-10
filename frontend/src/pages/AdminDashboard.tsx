@@ -173,7 +173,7 @@ const AdminDashboard = () => {
   });
   const [gameForm, setGameForm] = useState({
     name: '',
-    duration: 120,
+    duration: 30, // Changed from 120 to 30 (minimum required by backend)
     maxPlayers: 20,
     extractionPoint: { lat: 0, lng: 0, address: '' },
     tasks: Array(6).fill(null).map((_, i) => ({
@@ -1666,14 +1666,9 @@ const AdminDashboard = () => {
             }
           };
 
-          // SUPER VISIBLE DEBUGGING
-          alert('🔍 DEBUGGING: About to send game data to backend!');
           console.log('🔍 DEBUGGING: SENDING GAME DATA TO BACKEND:', JSON.stringify(basicGameData, null, 2));
           console.log('🔍 DEBUGGING: API_ENDPOINTS.GAMES:', API_ENDPOINTS.GAMES);
           console.log('🔍 DEBUGGING: Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
-          
-          // Show the data in an alert too
-          alert(`🔍 DEBUGGING: Game Data:\n${JSON.stringify(basicGameData, null, 2)}\n\nAPI Endpoint: ${API_ENDPOINTS.GAMES}\n\nToken: ${localStorage.getItem('token') ? 'Present' : 'Missing'}`);
 
           const gameResponse = await fetch(API_ENDPOINTS.GAMES, {
             method: 'POST',
@@ -1686,7 +1681,6 @@ const AdminDashboard = () => {
 
           console.log('🔍 DEBUGGING: Game response status:', gameResponse.status);
           console.log('🔍 DEBUGGING: Game response ok:', gameResponse.ok);
-          alert(`🔍 DEBUGGING: Response Status: ${gameResponse.status}, OK: ${gameResponse.ok}`);
 
           if (!gameResponse.ok) {
             const errorData = await gameResponse.json();
@@ -1698,8 +1692,13 @@ const AdminDashboard = () => {
               errorData
             });
             
-            // Show error in alert
-            alert(`🔍 DEBUGGING: ERROR DETAILS:\nStatus: ${gameResponse.status}\nError: ${JSON.stringify(errorData, null, 2)}`);
+            // Show detailed validation errors
+            if (errorData.details && Array.isArray(errorData.details)) {
+              const validationErrors = errorData.details.map((detail: any) => `• ${detail.msg} (${detail.param})`).join('\n');
+              alert(`❌ VALIDATION FAILED:\n\n${validationErrors}\n\nPlease fix these issues and try again.`);
+            } else {
+              alert(`❌ ERROR: ${errorData.error || errorData.message || 'Unknown error'}`);
+            }
             
             // Handle invalid token - redirect to login
             if (errorData.code === 'INVALID_TOKEN' || errorData.error === 'Invalid token') {
@@ -1832,11 +1831,14 @@ const AdminDashboard = () => {
                   <input
                     type="number"
                     value={gameForm.duration}
-                    onChange={(e) => setGameForm(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                    onChange={(e) => setGameForm(prev => ({ ...prev, duration: Math.max(30, parseInt(e.target.value) || 30) }))}
                     min="30"
-                    max="300"
+                    max="480"
                     required
                   />
+                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
+                    Minimum 30 minutes, maximum 480 minutes (8 hours)
+                  </small>
                 </div>
                 <div className="form-group">
                   <label>Max Players:</label>
