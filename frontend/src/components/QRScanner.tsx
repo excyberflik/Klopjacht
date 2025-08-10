@@ -143,7 +143,13 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onScanFailure, onC
   };
 
   const handleManualInput = () => {
-    const input = prompt('Enter QR code data manually:');
+    const input = prompt(
+      'Enter QR code data manually:\n\n' +
+      'Paste the JSON code from the admin dashboard here.\n' +
+      'It should look like:\n' +
+      '{"gameId":"...","taskNumber":1,"question":"...","taskId":"...","url":"..."}\n\n' +
+      'Enter the code:'
+    );
     if (input && input.trim()) {
       stopCamera();
       onScanSuccess(input.trim(), { rawValue: input.trim() });

@@ -118,6 +118,128 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
             <strong>Question:</strong> {task.question || 'No question'}
           </div>
           
+          <div className="qr-code-manual-entry" style={{ 
+            marginTop: '0.5rem', 
+            padding: '0.75rem', 
+            backgroundColor: '#f8f9fa', 
+            border: '1px solid #dee2e6', 
+            borderRadius: '6px',
+            fontSize: '0.9rem'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}>
+              <strong style={{ color: '#495057' }}>Manual Entry Code:</strong>
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  const jsonCode = JSON.stringify({
+                    gameId: gameId,
+                    taskId: `task_${task.taskNumber}`,
+                    taskNumber: task.taskNumber,
+                    question: task.question || 'No question',
+                    url: `${window.location.origin}/task/${gameId}/${task.taskNumber}`
+                  });
+                  
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(jsonCode).then(() => {
+                      // Visual feedback
+                      const button = e.target as HTMLButtonElement;
+                      const originalText = button.innerHTML;
+                      button.innerHTML = '✅ COPIED!';
+                      button.style.backgroundColor = '#28a745';
+                      setTimeout(() => {
+                        button.innerHTML = originalText;
+                        button.style.backgroundColor = '#007bff';
+                      }, 2000);
+                    }).catch(() => {
+                      // Fallback for clipboard API failure
+                      const textArea = document.createElement('textarea');
+                      textArea.value = jsonCode;
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(textArea);
+                      
+                      const button = e.target as HTMLButtonElement;
+                      const originalText = button.innerHTML;
+                      button.innerHTML = '✅ COPIED!';
+                      button.style.backgroundColor = '#28a745';
+                      setTimeout(() => {
+                        button.innerHTML = originalText;
+                        button.style.backgroundColor = '#007bff';
+                      }, 2000);
+                    });
+                  } else {
+                    // Fallback for browsers without clipboard API
+                    const textArea = document.createElement('textarea');
+                    textArea.value = jsonCode;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    const button = e.target as HTMLButtonElement;
+                    const originalText = button.innerHTML;
+                    button.innerHTML = '✅ COPIED!';
+                    button.style.backgroundColor = '#28a745';
+                    setTimeout(() => {
+                      button.innerHTML = originalText;
+                      button.style.backgroundColor = '#007bff';
+                    }, 2000);
+                  }
+                }}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                📋 COPY
+              </button>
+            </div>
+            
+            <div style={{ 
+              fontFamily: 'monospace', 
+              fontSize: '0.75rem', 
+              color: '#495057',
+              padding: '0.5rem',
+              backgroundColor: '#fff',
+              border: '1px solid #dee2e6',
+              borderRadius: '4px',
+              wordBreak: 'break-all',
+              lineHeight: '1.2',
+              maxHeight: '80px',
+              overflowY: 'auto'
+            }}>
+              {JSON.stringify({
+                gameId: gameId,
+                taskId: `task_${task.taskNumber}`,
+                taskNumber: task.taskNumber,
+                question: task.question || 'No question',
+                url: `${window.location.origin}/task/${gameId}/${task.taskNumber}`
+              }, null, 2)}
+            </div>
+            
+            <small style={{ 
+              color: '#6c757d', 
+              fontSize: '0.8rem',
+              display: 'block',
+              marginTop: '0.5rem',
+              fontStyle: 'italic'
+            }}>
+              💡 Players can paste this code in "Enter Manually" if camera fails
+            </small>
+          </div>
+          
           <div className="qr-code-actions">
             {task.qrCode && (
               <button 
