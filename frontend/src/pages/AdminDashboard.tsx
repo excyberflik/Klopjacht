@@ -913,12 +913,11 @@ const AdminDashboard = () => {
           task.question && task.answer && task.location.address
         );
 
-        // If no complete tasks, but we have extraction point, create a default Task 6
-        if (completeTasks.length === 0 && gameForm.extractionPoint.address) {
-          // Create a default complete Task 6 if none exists
-          const defaultTask6 = {
+        // Always create Task 6 as extraction point if we have extraction point
+        if (gameForm.extractionPoint.address) {
+          const extractionTask = {
             id: 6,
-            question: 'Reach the extraction point to complete the mission',
+            question: 'Scan QR code or enter manual code to reach extraction point',
             answer: 'extracted',
             location: {
               lat: gameForm.extractionPoint.lat,
@@ -927,9 +926,13 @@ const AdminDashboard = () => {
             }
           };
           
-          // Update the tasks array with the default Task 6
-          updatedTasks[5] = defaultTask6;
-          completeTasks.push(defaultTask6);
+          // Always set Task 6 as extraction point
+          updatedTasks[5] = extractionTask;
+          
+          // Add to complete tasks if not already there
+          if (!completeTasks.find(t => t.id === 6)) {
+            completeTasks.push(extractionTask);
+          }
         }
 
         if (completeTasks.length === 0) {
@@ -1249,39 +1252,57 @@ const AdminDashboard = () => {
                 <div className="tasks-grid">
                   {gameForm.tasks.map((task, index) => (
                     <div key={task.id} className="task-form-item">
-                      <h5>Mission {task.id} {task.id === 6 ? '(EXTRACTION POINT)' : ''}</h5>
+                      <h5>Mission {task.id} {task.id === 6 ? '(EXTRACTION POINT - NO MISSION)' : ''}</h5>
                       
-                      <div className="form-group">
-                        <label>Question *</label>
-                        <input
-                          type="text"
-                          value={task.question}
-                          onChange={(e) => setGameForm(prev => ({
-                            ...prev,
-                            tasks: prev.tasks.map((t, i) => 
-                              i === index ? { ...t, question: e.target.value } : t
-                            )
-                          }))}
-                          placeholder={task.id === 6 ? "Question for the extraction point task" : "What question should players answer?"}
-                          className="form-control"
-                        />
-                      </div>
+                      {task.id === 6 ? (
+                        <div style={{ 
+                          padding: '1rem', 
+                          backgroundColor: '#e8f5e8', 
+                          border: '2px solid #4caf50', 
+                          borderRadius: '8px',
+                          marginBottom: '1rem'
+                        }}>
+                          <h6 style={{ color: '#2e7d32', marginBottom: '0.5rem' }}>🎯 EXTRACTION POINT</h6>
+                          <p style={{ color: '#2e7d32', margin: 0, fontSize: '0.9rem' }}>
+                            <strong>Task 6 is automatically the extraction point.</strong><br/>
+                            Players just need to scan the QR code or enter the manual code to complete the game - no mission required!
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="form-group">
+                            <label>Question *</label>
+                            <input
+                              type="text"
+                              value={task.question}
+                              onChange={(e) => setGameForm(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map((t, i) => 
+                                  i === index ? { ...t, question: e.target.value } : t
+                                )
+                              }))}
+                              placeholder="What question should players answer?"
+                              className="form-control"
+                            />
+                          </div>
 
-                      <div className="form-group">
-                        <label>Answer *</label>
-                        <input
-                          type="text"
-                          value={task.answer}
-                          onChange={(e) => setGameForm(prev => ({
-                            ...prev,
-                            tasks: prev.tasks.map((t, i) => 
-                              i === index ? { ...t, answer: e.target.value } : t
-                            )
-                          }))}
-                          placeholder="What is the correct answer?"
-                          className="form-control"
-                        />
-                      </div>
+                          <div className="form-group">
+                            <label>Answer *</label>
+                            <input
+                              type="text"
+                              value={task.answer}
+                              onChange={(e) => setGameForm(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map((t, i) => 
+                                  i === index ? { ...t, answer: e.target.value } : t
+                                )
+                              }))}
+                              placeholder="What is the correct answer?"
+                              className="form-control"
+                            />
+                          </div>
+                        </>
+                      )}
 
                       <div className="form-group">
                         <label>Location *</label>
@@ -1666,7 +1687,7 @@ const AdminDashboard = () => {
                             <div className="status-item">
                               <span className="status-label">Tasks:</span>
                               <span className="status-value">
-                                {player.tasksCompleted || 0}/6
+                                {player.completedTasks?.length || player.tasksCompleted || 0}/6
                               </span>
                             </div>
                             {player.lastSeen && (
@@ -1759,16 +1780,18 @@ const AdminDashboard = () => {
               👥 Manage Game Leads
             </button>
           )}
-          <button 
-            className="nav-btn"
-            onClick={() => {
-              console.log('Manual refresh triggered');
-              fetchData();
-            }}
-            style={{ marginLeft: 'auto', backgroundColor: '#28a745' }}
-          >
-            🔄 Refresh
-          </button>
+          {localStorage.getItem('userRole') === 'super_admin' && (
+            <button 
+              className="nav-btn"
+              onClick={() => {
+                console.log('Manual refresh triggered');
+                fetchData();
+              }}
+              style={{ marginLeft: 'auto', backgroundColor: '#28a745' }}
+            >
+              🔄 Refresh
+            </button>
+          )}
         </div>
 
         {selectedView === 'overview' && localStorage.getItem('userRole') === 'super_admin' && renderOverview()}

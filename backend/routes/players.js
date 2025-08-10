@@ -646,7 +646,7 @@ router.post('/:id/complete-task', [
   }
 
   // Check if player can access this task (sequential completion)
-  const playerCompletedTasks = player.tasksCompleted || 0;
+  const playerCompletedTasks = player.completedTasks.length || 0;
   if (taskNumber !== playerCompletedTasks + 1) {
     if (taskNumber <= playerCompletedTasks) {
       throw new AppError('Task already completed', 400, 'TASK_ALREADY_COMPLETED');
@@ -661,8 +661,16 @@ router.post('/:id/complete-task', [
   const isCorrect = normalizedAnswer === correctAnswer;
 
   if (isCorrect) {
-    // Update player's completed tasks count
-    player.tasksCompleted = (player.tasksCompleted || 0) + 1;
+    // Add completion record to the player's completedTasks array
+    player.completedTasks.push({
+      taskId: task._id,
+      taskNumber: taskNumber,
+      completedAt: new Date(),
+      location: player.currentLocation
+    });
+    
+    // Update gameStats
+    player.gameStats.tasksCompleted = player.completedTasks.length;
     
     // Add completion record to the task
     if (!task.completedBy) {
@@ -682,7 +690,7 @@ router.post('/:id/complete-task', [
     res.json({
       correct: true,
       message: 'Task completed successfully',
-      tasksCompleted: player.tasksCompleted,
+      tasksCompleted: player.completedTasks.length,
       taskNumber: taskNumber
     });
   } else {
