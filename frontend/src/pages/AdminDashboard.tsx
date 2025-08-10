@@ -134,63 +134,64 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
             }}>
               <strong style={{ color: '#495057' }}>Manual Entry Code:</strong>
               <button 
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.preventDefault();
-                  const jsonCode = JSON.stringify({
-                    gameId: gameId,
-                    taskId: `task_${task.taskNumber}`,
-                    taskNumber: task.taskNumber,
-                    question: task.question || 'No question',
-                    url: `${window.location.origin}/task/${gameId}/${task.taskNumber}`
-                  });
+                  const button = e.target as HTMLButtonElement;
+                  const originalText = button.innerHTML;
+                  const originalBgColor = button.style.backgroundColor;
                   
-                  if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(jsonCode).then(() => {
-                      // Visual feedback
-                      const button = e.target as HTMLButtonElement;
-                      const originalText = button.innerHTML;
-                      button.innerHTML = '✅ COPIED!';
-                      button.style.backgroundColor = '#28a745';
-                      setTimeout(() => {
-                        button.innerHTML = originalText;
-                        button.style.backgroundColor = '#007bff';
-                      }, 2000);
-                    }).catch(() => {
-                      // Fallback for clipboard API failure
+                  // Generate simple 6-digit code based on gameId and task number
+                  const simpleCode = (() => {
+                    // Create a hash from gameId and task number for consistency
+                    const hashInput = `${gameId}-${task.taskNumber}`;
+                    let hash = 0;
+                    for (let i = 0; i < hashInput.length; i++) {
+                      const char = hashInput.charCodeAt(i);
+                      hash = ((hash << 5) - hash) + char;
+                      hash = hash & hash; // Convert to 32-bit integer
+                    }
+                    // Convert to positive 6-digit number
+                    const sixDigitCode = Math.abs(hash % 900000) + 100000;
+                    return sixDigitCode.toString();
+                  })();
+                  
+                  try {
+                    // Try modern clipboard API first
+                    if (navigator.clipboard && window.isSecureContext) {
+                      await navigator.clipboard.writeText(simpleCode);
+                    } else {
+                      // Fallback for older browsers or non-HTTPS
                       const textArea = document.createElement('textarea');
-                      textArea.value = jsonCode;
+                      textArea.value = simpleCode;
+                      textArea.style.position = 'fixed';
+                      textArea.style.left = '-999999px';
+                      textArea.style.top = '-999999px';
                       document.body.appendChild(textArea);
+                      textArea.focus();
                       textArea.select();
                       document.execCommand('copy');
                       document.body.removeChild(textArea);
-                      
-                      const button = e.target as HTMLButtonElement;
-                      const originalText = button.innerHTML;
-                      button.innerHTML = '✅ COPIED!';
-                      button.style.backgroundColor = '#28a745';
-                      setTimeout(() => {
-                        button.innerHTML = originalText;
-                        button.style.backgroundColor = '#007bff';
-                      }, 2000);
-                    });
-                  } else {
-                    // Fallback for browsers without clipboard API
-                    const textArea = document.createElement('textarea');
-                    textArea.value = jsonCode;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
+                    }
                     
-                    const button = e.target as HTMLButtonElement;
-                    const originalText = button.innerHTML;
+                    // Success feedback
                     button.innerHTML = '✅ COPIED!';
                     button.style.backgroundColor = '#28a745';
-                    setTimeout(() => {
-                      button.innerHTML = originalText;
-                      button.style.backgroundColor = '#007bff';
-                    }, 2000);
+                    button.style.color = 'white';
+                    
+                  } catch (err) {
+                    console.error('Copy failed:', err);
+                    // Error feedback
+                    button.innerHTML = '❌ FAILED';
+                    button.style.backgroundColor = '#dc3545';
+                    button.style.color = 'white';
                   }
+                  
+                  // Reset button after 2 seconds
+                  setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.style.backgroundColor = originalBgColor || '#007bff';
+                    button.style.color = 'white';
+                  }, 2000);
                 }}
                 style={{
                   padding: '0.25rem 0.5rem',
@@ -209,24 +210,29 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
             
             <div style={{ 
               fontFamily: 'monospace', 
-              fontSize: '0.75rem', 
+              fontSize: '2rem', 
               color: '#495057',
-              padding: '0.5rem',
+              padding: '1rem',
               backgroundColor: '#fff',
-              border: '1px solid #dee2e6',
-              borderRadius: '4px',
-              wordBreak: 'break-all',
-              lineHeight: '1.2',
-              maxHeight: '80px',
-              overflowY: 'auto'
+              border: '2px solid #007bff',
+              borderRadius: '8px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              letterSpacing: '0.2em'
             }}>
-              {JSON.stringify({
-                gameId: gameId,
-                taskId: `task_${task.taskNumber}`,
-                taskNumber: task.taskNumber,
-                question: task.question || 'No question',
-                url: `${window.location.origin}/task/${gameId}/${task.taskNumber}`
-              }, null, 2)}
+              {(() => {
+                // Generate the same 6-digit code for display
+                const hashInput = `${gameId}-${task.taskNumber}`;
+                let hash = 0;
+                for (let i = 0; i < hashInput.length; i++) {
+                  const char = hashInput.charCodeAt(i);
+                  hash = ((hash << 5) - hash) + char;
+                  hash = hash & hash; // Convert to 32-bit integer
+                }
+                // Convert to positive 6-digit number
+                const sixDigitCode = Math.abs(hash % 900000) + 100000;
+                return sixDigitCode.toString();
+              })()}
             </div>
             
             <small style={{ 
@@ -234,9 +240,10 @@ const QRCodesDisplay: React.FC<{ gameId: string }> = ({ gameId }) => {
               fontSize: '0.8rem',
               display: 'block',
               marginTop: '0.5rem',
-              fontStyle: 'italic'
+              fontStyle: 'italic',
+              textAlign: 'center'
             }}>
-              💡 Players can paste this code in "Enter Manually" if camera fails
+              💡 Players can type this 6-digit code in "Enter Manually" if QR scan fails
             </small>
           </div>
           
@@ -431,383 +438,79 @@ const AdminDashboard = () => {
     alert(`Player Location:\n\nName: ${player.name}\nRole: ${player.role}\nStatus: ${player.status}\nLocation: ${address}\nCoordinates: ${lat}, ${lng}\nLast Update: ${lastUpdate}`);
   };
 
-  const handleDeleteGame = async (gameId: string, gameName: string) => {
-    console.log('Attempting to delete game:', { gameId, gameName });
+  // Calculate time remaining for a specific game
+  const calculateGameTimeRemaining = (game: any) => {
+    if (!game) return 'No game';
     
-    if (!gameId || gameId === 'undefined') {
-      console.error('Invalid game ID:', gameId);
-      alert('Cannot delete game: Invalid game ID');
-      return;
+    if (game.status === 'waiting' || game.status === 'setup') {
+      return '⏳ Waiting to start';
     }
     
-    if (window.confirm(`Are you sure you want to delete the game "${gameName}"?\n\nThis action cannot be undone and will remove all associated data.`)) {
-      try {
-        const response = await fetch(API_ENDPOINTS.GAME_BY_ID(gameId), {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        if (response.ok) {
-          // Remove the game from the local state - check both id and _id
-          setGames(prev => prev.filter(game => (game.id !== gameId && game._id !== gameId)));
-          alert(`Game "${gameName}" has been successfully deleted from the database.`);
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to delete game: ${errorData.message || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error deleting game:', error);
-        alert('Failed to delete game. Please try again.');
+    if (game.status === 'completed') {
+      return '🏁 Game completed';
+    }
+    
+    if (game.status === 'cancelled') {
+      return '❌ Game cancelled';
+    }
+    
+    if (game.status === 'paused') {
+      // When paused, show the time remaining at the moment of pause
+      if (!game.startTime) {
+        return '⏸️ Paused - Not started';
       }
-    }
-  };
-
-  const handleSetLocation = (type: string, index?: number) => {
-    if (type === 'extraction') {
-      setMapSelectorType('extraction');
-    } else if (type === 'task' && index !== undefined) {
-      setMapSelectorType('task');
-      setMapSelectorTaskIndex(index);
-    }
-    setShowMapSelector(true);
-  };
-
-  const handleLocationSelect = (location: { lat: number; lng: number; address: string }) => {
-    if (mapSelectorType === 'extraction') {
-      setGameForm(prev => {
-        const updatedForm = {
-          ...prev,
-          extractionPoint: location
-        };
-        
-        // Automatically set Task 6 location to match extraction point
-        updatedForm.tasks = prev.tasks.map((task, i) => 
-          i === 5 ? { ...task, location } : task // Task 6 is index 5
-        );
-        
-        return updatedForm;
-      });
-    } else if (mapSelectorType === 'task') {
-      setGameForm(prev => ({
-        ...prev,
-        tasks: prev.tasks.map((task, i) => 
-          i === mapSelectorTaskIndex ? { ...task, location } : task
-        )
-      }));
-    }
-    setShowMapSelector(false);
-  };
-
-  const handleMapClose = () => {
-    setShowMapSelector(false);
-  };
-
-  // Game control handlers
-  const handleStartGame = async (gameId: string, gameName: string) => {
-    if (window.confirm(`Start the game "${gameName}"?\n\nThis will begin the countdown timer and notify all players.`)) {
-      try {
-        const response = await fetch(API_ENDPOINTS.GAME_START(gameId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        if (response.ok) {
-          alert(`Game "${gameName}" has been started successfully!`);
-          fetchData(); // Refresh data to show updated status
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to start game: ${errorData.message || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error starting game:', error);
-        alert('Failed to start game. Please try again.');
+      
+      const startTime = new Date(game.startTime);
+      const pausedAt = game.pausedAt ? new Date(game.pausedAt) : new Date();
+      const gameDuration = (game.duration || 120) * 60 * 1000; // Convert to milliseconds
+      const timeElapsedBeforePause = pausedAt.getTime() - startTime.getTime();
+      const remaining = gameDuration - timeElapsedBeforePause;
+      
+      if (remaining <= 0) {
+        return '⏸️ Paused - Time expired';
       }
-    }
-  };
-
-  const handlePauseGame = async (gameId: string, gameName: string) => {
-    if (window.confirm(`Pause the game "${gameName}"?\n\nThis will stop the timer and notify all players.`)) {
-      try {
-        console.log('Attempting to pause game:', { gameId, gameName });
-        console.log('Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
-        
-        const response = await fetch(API_ENDPOINTS.GAME_PAUSE(gameId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        console.log('Pause response status:', response.status);
-        console.log('Pause response ok:', response.ok);
-
-        if (response.ok) {
-          alert(`Game "${gameName}" has been paused successfully!`);
-          fetchData(); // Refresh data to show updated status
-        } else {
-          const errorData = await response.json();
-          console.error('Pause error data:', errorData);
-          alert(`Failed to pause game: ${errorData.error || errorData.message || 'Unknown error'}\n\nDetails: ${JSON.stringify(errorData, null, 2)}`);
-        }
-      } catch (error) {
-        console.error('Error pausing game:', error);
-        alert('Failed to pause game. Please try again.');
-      }
-    }
-  };
-
-  const handleResumeGame = async (gameId: string, gameName: string) => {
-    if (window.confirm(`Resume the game "${gameName}"?\n\nThis will restart the timer and notify all players.`)) {
-      try {
-        console.log('Attempting to resume game:', { gameId, gameName });
-        console.log('Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
-        
-        const response = await fetch(API_ENDPOINTS.GAME_RESUME(gameId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        console.log('Resume response status:', response.status);
-        console.log('Resume response ok:', response.ok);
-
-        if (response.ok) {
-          alert(`Game "${gameName}" has been resumed successfully!`);
-          fetchData(); // Refresh data to show updated status
-        } else {
-          const errorData = await response.json();
-          console.error('Resume error data:', errorData);
-          alert(`Failed to resume game: ${errorData.error || errorData.message || 'Unknown error'}\n\nDetails: ${JSON.stringify(errorData, null, 2)}`);
-        }
-      } catch (error) {
-        console.error('Error resuming game:', error);
-        alert('Failed to resume game. Please try again.');
-      }
-    }
-  };
-
-  const handleEndGame = async (gameId: string, gameName: string) => {
-    // Find the game to get its current status
-    const currentGame = games.find(g => (g._id === gameId || g.id === gameId));
-    console.log('DEBUG: Attempting to end game:', {
-      gameId,
-      gameName,
-      currentGame,
-      gameStatus: currentGame?.status,
-      gameObject: currentGame
-    });
-    
-    if (window.confirm(`End the game "${gameName}"?\n\nCurrent Status: ${currentGame?.status || 'Unknown'}\n\nThis action cannot be undone and will complete the game for all players.`)) {
-      try {
-        const response = await fetch(API_ENDPOINTS.GAME_END(gameId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        console.log('DEBUG: End game response:', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok
-        });
-
-        if (response.ok) {
-          alert(`Game "${gameName}" has been ended successfully!`);
-          fetchData(); // Refresh data to show updated status
-        } else {
-          const errorData = await response.json();
-          console.log('DEBUG: End game error data:', errorData);
-          
-          let errorMessage = 'Unknown error';
-          
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          } else if (errorData.error) {
-            errorMessage = errorData.error;
-          } else if (response.status === 400) {
-            errorMessage = 'Game cannot be ended in its current state. Only active or paused games can be ended.';
-          }
-          
-          const gameStatus = currentGame?.status || 'Unknown';
-          
-          alert(`Failed to end game: ${errorMessage}\n\nCurrent Game Status: "${gameStatus}"\n\nGame Object Debug Info:\n- ID: ${currentGame?._id || currentGame?.id}\n- Status: ${gameStatus}\n- All properties: ${Object.keys(currentGame || {}).join(', ')}\n\nValid states for ending: "active" or "paused"\nCurrent state "${gameStatus}" cannot be ended.\n\nTip: You may need to start the game first before you can end it.`);
-        }
-      } catch (error) {
-        console.error('Error ending game:', error);
-        alert('Failed to end game. Please try again.');
-      }
-    }
-  };
-
-  const handleSendMessage = async (gameId: string, gameName: string) => {
-    const message = prompt(`Send a message to all players in "${gameName}":\n\nEnter your message:`);
-    
-    if (message && message.trim()) {
-      try {
-        const response = await fetch(API_ENDPOINTS.GAME_MESSAGE(gameId), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-          body: JSON.stringify({ message: message.trim() })
-        });
-
-        if (response.ok) {
-          alert(`Message sent successfully to all players in "${gameName}"!`);
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to send message: ${errorData.message || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error sending message:', error);
-        alert('Failed to send message. Please try again.');
-      }
-    }
-  };
-
-  const handleEditPredefinedPlayer = async (gameId: string, player: any) => {
-    const newName = prompt(`Edit player name:`, player.name);
-    if (newName === null) return; // User cancelled
-    
-    const newRole = prompt(`Edit player role (fugitive/hunter/spectator):`, player.role);
-    if (newRole === null) return; // User cancelled
-    
-    const newTeam = prompt(`Edit player team (optional):`, player.team || '');
-    if (newTeam === null) return; // User cancelled
-    
-    const newPassword = prompt(`Edit player password:`, player.password);
-    if (newPassword === null) return; // User cancelled
-    
-    if (!newName.trim() || !newRole.trim() || !newPassword.trim()) {
-      alert('Name, role, and password are required');
-      return;
+      
+      const hours = Math.floor(remaining / (1000 * 60 * 60));
+      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+      
+      const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      
+      return `⏸️ Paused - ${timeString} remaining`;
     }
     
-    if (!['fugitive', 'hunter', 'spectator'].includes(newRole.toLowerCase())) {
-      alert('Role must be fugitive, hunter, or spectator');
-      return;
+    if (!game.startTime) {
+      return '⏸️ Not started';
+    }
+
+    const startTime = new Date(game.startTime);
+    const gameDuration = (game.duration || 120) * 60 * 1000; // Convert to milliseconds
+    const now = new Date();
+    
+    // Calculate total elapsed time, accounting for any paused periods
+    let totalElapsed = now.getTime() - startTime.getTime();
+    
+    // If the game was paused and resumed, we need to subtract the paused time
+    // For now, we'll use a simple approach - in a full implementation, you'd track all pause/resume periods
+    
+    const remaining = gameDuration - totalElapsed;
+    
+    if (remaining <= 0) {
+      return '⏰ Time expired';
     }
     
-    try {
-        const response = await fetch(API_ENDPOINTS.GAME_DELETE_PREDEFINED_PLAYER(gameId, player._id), {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-          body: JSON.stringify({
-            name: newName.trim(),
-            role: newRole.toLowerCase(),
-            team: newTeam.trim() || undefined,
-            password: newPassword.trim()
-          })
-        });
-
-      if (response.ok) {
-        alert('Player updated successfully!');
-        fetchData(); // Refresh data to show updated player
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to update player: ${errorData.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error updating player:', error);
-      alert('Failed to update player. Please try again.');
-    }
-  };
-
-  const handleDeletePredefinedPlayer = async (gameId: string, playerId: string, playerName: string) => {
-    if (window.confirm(`Are you sure you want to delete player "${playerName}"?\n\nThis action cannot be undone.`)) {
-      try {
-        const response = await fetch(API_ENDPOINTS.GAME_DELETE_PREDEFINED_PLAYER(gameId, playerId), {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        if (response.ok) {
-          alert(`Player "${playerName}" has been deleted successfully!`);
-          fetchData(); // Refresh data to show updated list
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to delete player: ${errorData.error || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error deleting player:', error);
-        alert('Failed to delete player. Please try again.');
-      }
-    }
-  };
-
-  const handleEditGame = async (gameId: string, gameName: string) => {
-    if (window.confirm(`Edit the game "${gameName}"?\n\nThis will allow you to modify game details, tasks, and locations before starting the game.`)) {
-      try {
-        // First, fetch the current game data
-        const response = await fetch(API_ENDPOINTS.GAME_BY_ID(gameId), {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          }
-        });
-
-        if (response.ok) {
-          const gameData = await response.json();
-          const game = gameData.game || gameData;
-          
-          // Populate the form with existing game data
-          setGameForm({
-            name: game.name || '',
-            duration: game.duration || 120,
-            maxPlayers: game.maxPlayers || game.settings?.maxPlayers || 20,
-            extractionPoint: {
-              lat: game.extractionPoint?.latitude || game.extractionPoint?.lat || 0,
-              lng: game.extractionPoint?.longitude || game.extractionPoint?.lng || 0,
-              address: game.extractionPoint?.address || ''
-            },
-            tasks: game.tasks && game.tasks.length === 6 ? game.tasks.map((task: any, index: number) => ({
-              id: index + 1,
-              question: task.question || '',
-              answer: task.answer || '',
-              location: {
-                lat: task.location?.latitude || task.location?.lat || 0,
-                lng: task.location?.longitude || task.location?.lng || 0,
-                address: task.location?.address || ''
-              }
-            })) : Array(6).fill(null).map((_, i) => ({
-              id: i + 1,
-              question: '',
-              answer: '',
-              location: { lat: 0, lng: 0, address: '' }
-            }))
-          });
-          
-          // Set the view to edit mode (reuse create-game view)
-          setCurrentStep(1);
-          setSelectedView('edit-game');
-          
-          // Store the game ID for updating
-          localStorage.setItem('editingGameId', gameId);
-          
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to load game data: ${errorData.message || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error loading game for editing:', error);
-        alert('Failed to load game data. Please try again.');
-      }
+    const hours = Math.floor(remaining / (1000 * 60 * 60));
+    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+    
+    const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    if (remaining < 5 * 60 * 1000) {
+      return `🚨 ${timeString} - CRITICAL!`;
+    } else if (remaining < 15 * 60 * 1000) {
+      return `⚠️ ${timeString} - Low time`;
+    } else {
+      return `⏱️ ${timeString}`;
     }
   };
 
@@ -1010,457 +713,6 @@ const AdminDashboard = () => {
     </div>
   );
 
-  // Calculate time remaining for a specific game
-  const calculateGameTimeRemaining = (game: any) => {
-    if (!game) return 'No game';
-    
-    if (game.status === 'waiting' || game.status === 'setup') {
-      return '⏳ Waiting to start';
-    }
-    
-    if (game.status === 'completed') {
-      return '🏁 Game completed';
-    }
-    
-    if (game.status === 'cancelled') {
-      return '❌ Game cancelled';
-    }
-    
-    if (game.status === 'paused') {
-      // When paused, show the time remaining at the moment of pause
-      if (!game.startTime) {
-        return '⏸️ Paused - Not started';
-      }
-      
-      const startTime = new Date(game.startTime);
-      const pausedAt = game.pausedAt ? new Date(game.pausedAt) : new Date();
-      const gameDuration = (game.duration || 120) * 60 * 1000; // Convert to milliseconds
-      const timeElapsedBeforePause = pausedAt.getTime() - startTime.getTime();
-      const remaining = gameDuration - timeElapsedBeforePause;
-      
-      if (remaining <= 0) {
-        return '⏸️ Paused - Time expired';
-      }
-      
-      const hours = Math.floor(remaining / (1000 * 60 * 60));
-      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-      
-      const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      
-      return `⏸️ Paused - ${timeString} remaining`;
-    }
-    
-    if (!game.startTime) {
-      return '⏸️ Not started';
-    }
-
-    const startTime = new Date(game.startTime);
-    const gameDuration = (game.duration || 120) * 60 * 1000; // Convert to milliseconds
-    const now = new Date();
-    
-    // Calculate total elapsed time, accounting for any paused periods
-    let totalElapsed = now.getTime() - startTime.getTime();
-    
-    // If the game was paused and resumed, we need to subtract the paused time
-    // For now, we'll use a simple approach - in a full implementation, you'd track all pause/resume periods
-    
-    const remaining = gameDuration - totalElapsed;
-    
-    if (remaining <= 0) {
-      return '⏰ Time expired';
-    }
-    
-    const hours = Math.floor(remaining / (1000 * 60 * 60));
-    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-    
-    const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    if (remaining < 5 * 60 * 1000) {
-      return `🚨 ${timeString} - CRITICAL!`;
-    } else if (remaining < 15 * 60 * 1000) {
-      return `⚠️ ${timeString} - Low time`;
-    } else {
-      return `⏱️ ${timeString}`;
-    }
-  };
-
-  const renderGameDetails = (gameCode: string) => {
-    const game = games.find(g => g.gameCode === gameCode || g.code === gameCode);
-    const gamePlayers = players.filter(p => {
-      // Match by game code or game ID
-      return p.game?.gameCode === gameCode || 
-             p.gameCode === gameCode ||
-             (p.game && p.game._id === game?._id) ||
-             (p.game && p.game.id === game?.id);
-    });
-    
-    const gameTimeRemaining = calculateGameTimeRemaining(game);
-    
-    console.log('Looking for game with code:', gameCode);
-    console.log('Available games:', games.map(g => ({ id: g.id, code: g.code, gameCode: g.gameCode, name: g.name })));
-    console.log('Found game:', game);
-    
-    if (!game) {
-      return (
-        <div className="admin-content">
-          <div className="klopjacht-header">
-            <div className="header-title">
-              <h2>GAME NOT FOUND</h2>
-              <div className="header-subtitle">UNABLE TO LOCATE REQUESTED GAME</div>
-            </div>
-            <div className="header-actions">
-              <button 
-                className="btn btn-secondary btn-large" 
-                onClick={() => setSelectedView('games')}
-              >
-                ← BACK TO GAMES
-              </button>
-            </div>
-          </div>
-          <div className="no-games-enhanced">
-            <div className="no-games-icon">❌</div>
-            <div className="no-games-title">GAME NOT FOUND</div>
-            <div className="no-games-subtitle">Could not find game with code: {gameCode}</div>
-            <div style={{ marginTop: '1rem', color: '#888' }}>Available games: {games.length}</div>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="admin-content">
-        <div className="klopjacht-header">
-          <div className="header-title">
-            <h2>KLOPJACHT: {game.name.toUpperCase()}</h2>
-            <div className="header-subtitle">GAME CODE: #{game.gameCode} | COMPLETE GAME MANAGEMENT</div>
-          </div>
-          <div className="header-actions">
-            <button 
-              className="btn btn-secondary btn-large" 
-              onClick={() => setSelectedView('games')}
-            >
-              ← BACK TO GAMES
-            </button>
-          </div>
-        </div>
-        
-        <div className="klopjacht-games-section">
-          <div className="klopjacht-games-grid">
-            {/* Game Status & Actions Card */}
-            <div className="klopjacht-game-card">
-              <div className="game-card-header-enhanced">
-                <div className="game-title">
-                  <h4>GAME STATUS & ACTIONS</h4>
-                  <div className="game-code">CONTROL CENTER</div>
-                </div>
-                <div className={`status-badge-enhanced ${game.status}`}>
-                  {game.status?.toUpperCase() || 'UNKNOWN'}
-                </div>
-              </div>
-              
-              <div className="game-card-body-enhanced">
-                <div className="game-info-grid">
-                  <div className="info-item">
-                    <div className="info-label">STATUS</div>
-                    <div className="info-value">{game.status?.toUpperCase() || 'UNKNOWN'}</div>
-                  </div>
-                  <div className="info-item">
-                    <div className="info-label">PLAYERS</div>
-                    <div className="info-value">{game.players || 0}/{game.maxPlayers || 20}</div>
-                  </div>
-                  <div className="info-item">
-                    <div className="info-label">STARTED</div>
-                    <div className="info-value">{game.startTime ? new Date(game.startTime).toLocaleString() : 'Not started'}</div>
-                  </div>
-                  <div className="info-item">
-                    <div className="info-label">CREATOR</div>
-                    <div className="info-value">{typeof game.createdBy === 'object' ? game.createdBy?.name || 'Unknown' : game.createdBy || 'Unknown'}</div>
-                  </div>
-                </div>
-                
-                {game.status === 'active' && (
-                  <div className="game-timer">
-                    <div className="timer-label">TIME REMAINING</div>
-                    <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="game-card-actions-enhanced">
-                {/* Edit Game - show for setup/waiting/created games (before they start) */}
-                {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
-                  <button 
-                    className="btn-enhanced btn-primary-enhanced" 
-                    onClick={() => handleEditGame(game._id || game.id, game.name)}
-                  >
-                    ✏️ EDIT
-                  </button>
-                )}
-                
-                {/* Start Game - show for setup/waiting/created games */}
-                {(!game.status || game.status === 'setup' || game.status === 'waiting' || game.status === 'created' || game.status === 'pending') && (
-                  <button 
-                    className="btn-enhanced btn-primary-enhanced" 
-                    onClick={() => handleStartGame(game._id || game.id, game.name)}
-                  >
-                    ▶️ START
-                  </button>
-                )}
-                
-                {/* Pause Game - show for active games */}
-                {game.status === 'active' && (
-                  <button 
-                    className="btn-enhanced btn-primary-enhanced" 
-                    onClick={() => handlePauseGame(game._id || game.id, game.name)}
-                  >
-                    ⏸️ PAUSE
-                  </button>
-                )}
-                
-                {/* Resume Game - show for paused games */}
-                {game.status === 'paused' && (
-                  <button 
-                    className="btn-enhanced btn-primary-enhanced" 
-                    onClick={() => handleResumeGame(game._id || game.id, game.name)}
-                  >
-                    ▶️ RESUME
-                  </button>
-                )}
-                
-                {/* End Game - show for active or paused games */}
-                {(game.status === 'active' || game.status === 'paused') && (
-                  <button 
-                    className="btn-enhanced btn-danger-enhanced" 
-                    onClick={() => handleEndGame(game._id || game.id, game.name)}
-                  >
-                    ⏹️ END
-                  </button>
-                )}
-                
-                {/* Always show End Game button if game is not completed */}
-                {game.status !== 'completed' && game.status !== 'cancelled' && game.status !== 'active' && game.status !== 'paused' && (
-                  <button 
-                    className="btn-enhanced btn-danger-enhanced" 
-                    onClick={() => handleEndGame(game._id || game.id, game.name)}
-                  >
-                    ⏹️ END
-                  </button>
-                )}
-                
-                {/* Send Message - always available */}
-                <button 
-                  className="btn-enhanced btn-info-enhanced" 
-                  onClick={() => handleSendMessage(game._id || game.id, game.name)}
-                >
-                  💬 MESSAGE
-                </button>
-                
-                {/* Delete Game - show for all games except active ones */}
-                <button 
-                  className="btn-enhanced btn-danger-enhanced" 
-                  onClick={() => handleDeleteGame(game._id || game.id, game.name)}
-                  disabled={game.status === 'active'}
-                  title={game.status === 'active' ? 'Cannot delete active games' : 'Delete this game permanently'}
-                >
-                  🗑️ DELETE
-                </button>
-              </div>
-              
-              {game.status === 'active' && (
-                <div className="active-game-indicator">
-                  <div className="pulse-dot"></div>
-                  LIVE GAME IN PROGRESS
-                </div>
-              )}
-            </div>
-
-            {/* Predefined Players Card */}
-            <div className="klopjacht-game-card">
-              <div className="game-card-header-enhanced">
-                <div className="game-title">
-                  <h4>PREDEFINED PLAYERS</h4>
-                  <div className="game-code">PLAYER SLOTS: {game.predefinedPlayers?.length || 0}</div>
-                </div>
-                <div className="status-badge-enhanced setup">
-                  {game.predefinedPlayers?.length || 0} PLAYERS
-                </div>
-              </div>
-              
-              <div className="game-card-body-enhanced">
-                {game.predefinedPlayers && game.predefinedPlayers.length > 0 ? (
-                  <div className="players-enhanced-list">
-                    {game.predefinedPlayers.map((player: PredefinedPlayer) => (
-                      <div key={player._id} className="player-enhanced-item">
-                        <div className="player-enhanced-header">
-                          <strong>{player.name.toUpperCase()}</strong>
-                          <span className={`status-badge-enhanced ${player.isJoined ? 'active' : 'setup'}`}>
-                            {player.isJoined ? 'JOINED' : 'AVAILABLE'}
-                          </span>
-                        </div>
-                        <div className="player-enhanced-details">
-                          <div><strong>ROLE:</strong> {player.role.toUpperCase()}</div>
-                          <div><strong>TEAM:</strong> {(player.team || 'NONE').toUpperCase()}</div>
-                          <div><strong>PASSWORD:</strong> {player.password}</div>
-                          <div><strong>CREATED:</strong> {new Date(player.createdAt).toLocaleDateString()}</div>
-                        </div>
-                        <div className="player-enhanced-actions">
-                          <button 
-                            className="btn-enhanced btn-primary-enhanced" 
-                            onClick={() => handleEditPredefinedPlayer(game._id || game.id, player)}
-                          >
-                            ✏️ EDIT
-                          </button>
-                          <button 
-                            className="btn-enhanced btn-danger-enhanced" 
-                            onClick={() => handleDeletePredefinedPlayer(game._id || game.id, player._id, player.name)}
-                            disabled={player.isJoined}
-                            title={player.isJoined ? 'Cannot delete players who have already joined' : 'Delete this predefined player'}
-                          >
-                            🗑️ {player.isJoined ? 'JOINED' : 'DELETE'}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
-                    <div className="no-games-icon">👥</div>
-                    <div className="no-games-title">NO PLAYERS CREATED</div>
-                    <div className="no-games-subtitle">Create predefined players to get started</div>
-                    <button 
-                      className="btn btn-primary btn-large" 
-                      onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
-                      style={{ marginTop: '1rem' }}
-                    >
-                      👥 ADD PLAYERS
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Joined Players Card */}
-            <div className="klopjacht-game-card">
-              <div className="game-card-header-enhanced">
-                <div className="game-title">
-                  <h4>JOINED PLAYERS</h4>
-                  <div className="game-code">IN GAME: {(() => {
-                    // Count predefined players who have joined
-                    const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined).length || 0;
-                    // Count active players in the game
-                    const activePlayers = gamePlayers.length;
-                    return Math.max(joinedPredefined, activePlayers);
-                  })()}</div>
-                </div>
-                <div className="status-badge-enhanced active">
-                  {(() => {
-                    const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined).length || 0;
-                    const activePlayers = gamePlayers.length;
-                    const totalJoined = Math.max(joinedPredefined, activePlayers);
-                    return `${totalJoined} JOINED`;
-                  })()}
-                </div>
-              </div>
-              
-              <div className="game-card-body-enhanced">
-                {(() => {
-                  // Show predefined players who have joined, or active players if game is running
-                  const joinedPredefined = game.predefinedPlayers?.filter((p: PredefinedPlayer) => p.isJoined) || [];
-                  const playersToShow = joinedPredefined.length > 0 ? joinedPredefined : gamePlayers;
-                  
-                  return playersToShow.length > 0 ? (
-                    <div className="players-enhanced-list">
-                      {playersToShow.map((player: any) => {
-                        // Handle both predefined players and active players
-                        const isPredefPlayer = player.hasOwnProperty('isJoined');
-                        
-                        return (
-                          <div key={player._id || player.id} className="player-enhanced-item">
-                            <div className="player-enhanced-header">
-                              <strong>{player.name.toUpperCase()}</strong>
-                              <span className={`status-badge-enhanced ${
-                                isPredefPlayer 
-                                  ? (game.status === 'active' ? 'active' : 'setup')
-                                  : (player.status || 'active')
-                              }`}>
-                                {isPredefPlayer 
-                                  ? (game.status === 'active' ? 'IN GAME' : 'WAITING')
-                                  : (player.status?.toUpperCase() || 'ACTIVE')
-                                }
-                              </span>
-                            </div>
-                            <div className="player-enhanced-details">
-                              <div><strong>ROLE:</strong> {player.role?.toUpperCase() || 'UNKNOWN'}</div>
-                              <div><strong>TEAM:</strong> {(player.team || 'NONE').toUpperCase()}</div>
-                              {!isPredefPlayer && (
-                                <>
-                                  <div><strong>TASKS:</strong> {player.tasksCompleted || 0}/6</div>
-                                  <div><strong>LOCATION:</strong> {player.location?.address || player.currentLocation?.address || 'NO LOCATION'}</div>
-                                </>
-                              )}
-                              {isPredefPlayer && (
-                                <>
-                                  <div><strong>STATUS:</strong> JOINED & {game.status === 'active' ? 'PLAYING' : 'WAITING'}</div>
-                                  <div><strong>JOINED:</strong> {new Date(player.createdAt).toLocaleDateString()}</div>
-                                </>
-                              )}
-                            </div>
-                            <div className="player-enhanced-actions">
-                              {!isPredefPlayer && (
-                                <button 
-                                  className="btn-enhanced btn-info-enhanced" 
-                                  onClick={() => handleViewLocation(player)}
-                                >
-                                  📍 LOCATION
-                                </button>
-                              )}
-                              {isPredefPlayer && game.status !== 'active' && (
-                                <div className="player-waiting-indicator">
-                                  <span style={{ color: '#0066CC', fontSize: '0.9rem' }}>
-                                    ⏳ WAITING FOR GAME START
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
-                      <div className="no-games-icon">👥</div>
-                      <div className="no-games-title">NO PLAYERS JOINED</div>
-                      <div className="no-games-subtitle">No players have joined the game yet</div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* QR Codes Card */}
-            <div className="klopjacht-game-card">
-              <div className="game-card-header-enhanced">
-                <div className="game-title">
-                  <h4>MISSION QR CODES</h4>
-                  <div className="game-code">FUGITIVE TASKS: {game.tasks?.length || 0}/6</div>
-                </div>
-                <div className="status-badge-enhanced setup">
-                  {game.tasks?.length || 0} QR CODES
-                </div>
-              </div>
-              
-              <div className="game-card-body-enhanced">
-                <QRCodesDisplay gameId={game._id || game.id} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderAllGames = () => (
     <div className="admin-content">
       <div className="klopjacht-header">
@@ -1562,12 +814,14 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                   
-                  {game.status === 'active' && (
-                    <div className="game-timer">
-                      <div className="timer-label">TIME REMAINING</div>
-                      <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
+                {(game.status === 'active' || game.status === 'paused') && (
+                  <div className="game-timer">
+                    <div className="timer-label">
+                      {game.status === 'active' ? 'TIME REMAINING' : 'TIME REMAINING (PAUSED)'}
                     </div>
-                  )}
+                    <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
+                  </div>
+                )}
                 </div>
                 
                 <div className="game-card-actions-enhanced">
@@ -1582,14 +836,6 @@ const AdminDashboard = () => {
                     onClick={() => navigate(`/manage-players/${game._id || game.id}`)}
                   >
                     👥 PLAYERS
-                  </button>
-                  <button 
-                    className="btn-enhanced btn-danger-enhanced" 
-                    onClick={() => handleDeleteGame(game._id || game.id, game.name)}
-                    disabled={game.status === 'active'}
-                    title={game.status === 'active' ? 'Cannot delete active games' : 'Delete this game permanently'}
-                  >
-                    🗑️ DELETE
                   </button>
                 </div>
                 
@@ -1608,280 +854,114 @@ const AdminDashboard = () => {
   );
 
   const renderCreateGame = () => {
-    const handleFormSubmit = async (e: any) => {
+    const handleSubmitGame = async (e: React.FormEvent) => {
       e.preventDefault();
-      
-      // Check if we're editing an existing game
-      const editingGameId = localStorage.getItem('editingGameId');
-      const isEditing = !!editingGameId;
-      
-      // CRITICAL: Validate form before any processing
-      const validTasks = gameForm.tasks.filter(t => 
-        t.question && t.question.trim().length >= 10 && 
-        t.answer && t.answer.trim().length >= 1 && 
-        t.location.address && t.location.address.trim().length > 0
-      );
-      const isFormValid = validTasks.length === 6 && 
-                         gameForm.name.trim().length >= 3 && 
-                         gameForm.extractionPoint.address && 
-                         gameForm.extractionPoint.address.trim().length > 0;
-      
-      console.log('FORM SUBMISSION VALIDATION:', {
-        isEditing,
-        editingGameId,
-        validTasksCount: validTasks.length,
-        gameNameLength: gameForm.name.trim().length,
-        hasExtractionPoint: !!gameForm.extractionPoint.address,
-        isFormValid,
-        gameFormData: {
-          name: gameForm.name,
-          extractionPoint: gameForm.extractionPoint,
-          tasks: gameForm.tasks.map(t => ({
-            question: t.question,
-            answer: t.answer,
-            location: t.location.address
-          }))
-        }
-      });
-      
-      if (!isFormValid) {
-        alert(`Form is incomplete!\n\nRequirements:\n- Game name: ${gameForm.name.trim().length}/3 characters\n- Extraction point: ${gameForm.extractionPoint.address ? 'Set' : 'Missing'}\n- Valid tasks: ${validTasks.length}/6\n\nPlease complete all fields before submitting.`);
-        return;
-      }
-      
       setLoading(true);
-      
+
       try {
-        // Debug: Check if token exists
-        const token = localStorage.getItem('token');
-        console.log('Token exists:', !!token);
-        console.log('Token preview:', token ? token.substring(0, 20) + '...' : 'No token');
-        
-        // Debug: Try to decode the token to see if it's valid
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            console.log('Token payload:', payload);
-            console.log('Token expires at:', new Date(payload.exp * 1000));
-            console.log('Current time:', new Date());
-            console.log('Token is expired:', payload.exp * 1000 < Date.now());
-          } catch (e) {
-            console.log('Error decoding token:', e);
-          }
+        // Validate that we have at least some tasks with complete data
+        const completeTasks = gameForm.tasks.filter(task => 
+          task.question && task.answer && task.location.address
+        );
+
+        if (completeTasks.length === 0) {
+          alert('Please add at least one complete task with question, answer, and location.');
+          setLoading(false);
+          return;
         }
-        
-        // Create game data
+
+        // First create the game without tasks
         const gameData = {
           name: gameForm.name,
           duration: gameForm.duration,
           maxPlayers: gameForm.maxPlayers,
-          extractionPoint: gameForm.extractionPoint,
-          tasks: gameForm.tasks
+          extractionPoint: {
+            latitude: gameForm.extractionPoint.lat || 50.8503, // Default to Brussels if no coordinates
+            longitude: gameForm.extractionPoint.lng || 4.3517,
+            address: gameForm.extractionPoint.address
+          },
+          settings: {
+            maxPlayers: gameForm.maxPlayers
+          }
         };
 
-        if (isEditing) {
-          // UPDATE EXISTING GAME
-          console.log('Updating existing game:', editingGameId);
-          
-          // Step 1: Update the basic game info
-          const basicGameData = {
-            name: gameData.name,
-            duration: gameData.duration,
-            extractionPoint: {
-              latitude: parseFloat(gameData.extractionPoint.lat.toString()),
-              longitude: parseFloat(gameData.extractionPoint.lng.toString()),
-              address: gameData.extractionPoint.address
-            },
-            settings: {
-              maxPlayers: gameData.maxPlayers
-            }
-          };
+        console.log('Creating game with data:', gameData);
 
-          const gameResponse = await fetch(API_ENDPOINTS.GAME_BY_ID(editingGameId), {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify(basicGameData)
-          });
+        const response = await fetch(API_ENDPOINTS.GAMES, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify(gameData),
+        });
 
-          if (!gameResponse.ok) {
-            const errorData = await gameResponse.json();
-            console.error('Game update error:', errorData);
-            
-            // Handle invalid token - redirect to login
-            if (errorData.code === 'INVALID_TOKEN' || errorData.error === 'Invalid token') {
-              alert('Your session has expired. Please log in again.');
-              localStorage.removeItem('token');
-              navigate('/login');
-              return;
-            }
-            
-            throw new Error(`Failed to update game: ${errorData.error || errorData.message || 'Unknown error'}`);
-          }
-
-          // Step 2: Update tasks
-          const tasksData = {
-            tasks: gameData.tasks.map(task => ({
-              question: task.question,
-              answer: task.answer,
-              location: {
-                latitude: task.location.lat,
-                longitude: task.location.lng,
-                address: task.location.address
-              }
-            }))
-          };
-
-          const tasksResponse = await fetch(API_ENDPOINTS.GAME_TASKS(editingGameId), {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify(tasksData)
-          });
-
-          if (!tasksResponse.ok) {
-            const errorData = await tasksResponse.json();
-            console.error('Tasks update error:', errorData);
-            console.error('Validation details:', errorData.details);
-            
-            // Log each validation error individually
-            if (errorData.details && Array.isArray(errorData.details)) {
-              errorData.details.forEach((detail: any, index: number) => {
-                console.error(`Validation Error ${index + 1}:`, detail);
-              });
-            }
-            
-            throw new Error(`Failed to update tasks: ${errorData.error || errorData.message || 'Unknown error'}`);
-          }
-
-          // Update the game in the games list
-          setGames(prev => prev.map(game => 
-            (game._id === editingGameId || game.id === editingGameId) 
-              ? { ...game, ...gameData, tasks: gameData.tasks }
-              : game
-          ));
-          
-          alert(`Game Updated Successfully!\n\nName: ${gameData.name}\nDuration: ${gameData.duration} minutes\nMax Players: ${gameData.maxPlayers}\n\nExtraction Point: ${gameData.extractionPoint.address}\nTasks: 6/6 updated\n\nGame changes have been saved!`);
-          
-          // Clean up editing state
-          localStorage.removeItem('editingGameId');
-          
-        } else {
-          // CREATE NEW GAME
-          console.log('Creating new game');
-          
-          // Step 1: Create the basic game
-          const basicGameData = {
-            name: gameData.name,
-            duration: gameData.duration,
-            extractionPoint: {
-              latitude: parseFloat(gameData.extractionPoint.lat.toString()),
-              longitude: parseFloat(gameData.extractionPoint.lng.toString()),
-              address: gameData.extractionPoint.address
-            },
-            settings: {
-              maxPlayers: gameData.maxPlayers
-            }
-          };
-
-          console.log('🔍 DEBUGGING: SENDING GAME DATA TO BACKEND:', JSON.stringify(basicGameData, null, 2));
-          console.log('🔍 DEBUGGING: API_ENDPOINTS.GAMES:', API_ENDPOINTS.GAMES);
-          console.log('🔍 DEBUGGING: Token:', localStorage.getItem('token') ? 'Present' : 'Missing');
-
-          const gameResponse = await fetch(API_ENDPOINTS.GAMES, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify(basicGameData)
-          });
-
-          console.log('🔍 DEBUGGING: Game response status:', gameResponse.status);
-          console.log('🔍 DEBUGGING: Game response ok:', gameResponse.ok);
-
-          if (!gameResponse.ok) {
-            const errorData = await gameResponse.json();
-            console.error('🔍 DEBUGGING: Game creation error:', errorData);
-            console.error('🔍 DEBUGGING: Full error response:', {
-              status: gameResponse.status,
-              statusText: gameResponse.statusText,
-              headers: Object.fromEntries(gameResponse.headers.entries()),
-              errorData
-            });
-            
-            // Show detailed validation errors
-            if (errorData.details && Array.isArray(errorData.details)) {
-              const validationErrors = errorData.details.map((detail: any) => `• ${detail.msg} (${detail.param})`).join('\n');
-              alert(`❌ VALIDATION FAILED:\n\n${validationErrors}\n\nPlease fix these issues and try again.`);
-            } else {
-              alert(`❌ ERROR: ${errorData.error || errorData.message || 'Unknown error'}`);
-            }
-            
-            // Handle invalid token - redirect to login
-            if (errorData.code === 'INVALID_TOKEN' || errorData.error === 'Invalid token') {
-              alert('Your session has expired. Please log in again.');
-              localStorage.removeItem('token');
-              navigate('/login');
-              return;
-            }
-            
-            throw new Error(`Failed to create game: ${errorData.error || errorData.message || 'Unknown error'}`);
-          }
-
-          const newGame = await gameResponse.json();
-          
-          // Step 2: Add tasks to the game
-          const tasksData = {
-            tasks: gameData.tasks.map(task => ({
-              question: task.question,
-              answer: task.answer,
-              location: {
-                latitude: parseFloat(task.location.lat.toString()),
-                longitude: parseFloat(task.location.lng.toString()),
-                address: task.location.address
-              }
-            }))
-          };
-
-          const tasksResponse = await fetch(API_ENDPOINTS.GAME_TASKS(newGame.game.id), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify(tasksData)
-          });
-
-          if (!tasksResponse.ok) {
-            const errorData = await tasksResponse.json();
-            console.error('Tasks creation error:', errorData);
-            console.error('Validation details:', errorData.details);
-            
-            // Log each validation error individually
-            if (errorData.details && Array.isArray(errorData.details)) {
-              errorData.details.forEach((detail: any, index: number) => {
-                console.error(`Validation Error ${index + 1}:`, detail);
-              });
-            }
-            
-            throw new Error(`Failed to add tasks to game: ${errorData.error || errorData.message || 'Unknown error'}`);
-          }
-
-          // Add the new game to the games list
-          setGames(prev => Array.isArray(prev) ? [...prev, { ...newGame.game, tasks: gameData.tasks }] : [{ ...newGame.game, tasks: gameData.tasks }]);
-          
-          alert(`Game Created Successfully!\n\nGame Code: ${newGame.code || newGame.game?.gameCode || 'Generated'}\nName: ${newGame.game?.name || gameData.name}\nDuration: ${gameData.duration} minutes\nMax Players: ${gameData.maxPlayers}\n\nExtraction Point: ${gameData.extractionPoint.address || 'Not set'}\nTasks: 6/6 completed\n\nGame is ready for players to join!`);
+        if (!response.ok) {
+          const error = await response.json();
+          console.error('Game creation failed:', error);
+          alert(`Failed to create game: ${error.details ? error.details.map((d: any) => d.msg).join(', ') : error.message || 'Unknown error'}`);
+          setLoading(false);
+          return;
         }
+
+        const result = await response.json();
+        console.log('Game created successfully:', result);
+
+        // Now add tasks if we have any complete ones
+        if (completeTasks.length > 0) {
+          // Pad to exactly 6 tasks as required by backend
+          const paddedTasks = [...completeTasks];
+          while (paddedTasks.length < 6) {
+            paddedTasks.push({
+              id: paddedTasks.length + 1,
+              question: `Task ${paddedTasks.length + 1} - Please complete this task`,
+              answer: 'complete',
+              location: {
+                lat: gameData.extractionPoint.latitude,
+                lng: gameData.extractionPoint.longitude,
+                address: gameData.extractionPoint.address
+              }
+            });
+          }
+
+          const tasksData = {
+            tasks: paddedTasks.map(task => ({
+              question: task.question,
+              answer: task.answer,
+              location: {
+                latitude: task.location.lat || gameData.extractionPoint.latitude,
+                longitude: task.location.lng || gameData.extractionPoint.longitude,
+                address: task.location.address || gameData.extractionPoint.address
+              }
+            }))
+          };
+
+          console.log('Adding tasks with data:', tasksData);
+
+          const tasksResponse = await fetch(`${API_ENDPOINTS.GAMES}/${result.game.id}/tasks`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify(tasksData),
+          });
+
+          if (!tasksResponse.ok) {
+            const tasksError = await tasksResponse.json();
+            console.error('Tasks creation failed:', tasksError);
+            alert(`Game created but failed to add tasks: ${tasksError.details ? tasksError.details.map((d: any) => d.msg).join(', ') : tasksError.message || 'Unknown error'}`);
+          } else {
+            console.log('Tasks added successfully');
+          }
+        }
+
+        alert(`Game "${gameForm.name}" created successfully! Game Code: ${result.game.gameCode}`);
         
-        // Reset form and go back to overview
+        // Reset form
         setGameForm({
           name: '',
-          duration: 120,
+          duration: 30,
           maxPlayers: 20,
           extractionPoint: { lat: 0, lng: 0, address: '' },
           tasks: Array(6).fill(null).map((_, i) => ({
@@ -1892,192 +972,219 @@ const AdminDashboard = () => {
           }))
         });
         setCurrentStep(1);
-        setSelectedView('overview');
         
-        // Refresh data to show updated information
-        fetchData();
-        
-      } catch (error: any) {
-        console.error(`Error ${isEditing ? 'updating' : 'creating'} game:`, error);
-        console.error('Error details:', {
-          message: error?.message || 'No message',
-          stack: error?.stack || 'No stack trace',
-          name: error?.name || 'Unknown error type'
-        });
-        alert(`Failed to ${isEditing ? 'update' : 'create'} game: ${error?.message || 'Unknown error'}`);
+        // Refresh data and go back to games list
+        await fetchData();
+        setSelectedView('games');
+
+      } catch (error) {
+        console.error('Error creating game:', error);
+        alert('Error creating game. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
+    const handleLocationSelect = (location: { lat: number; lng: number; address: string }) => {
+      if (mapSelectorType === 'extraction') {
+        setGameForm(prev => ({
+          ...prev,
+          extractionPoint: location
+        }));
+      } else if (mapSelectorType === 'task') {
+        setGameForm(prev => ({
+          ...prev,
+          tasks: prev.tasks.map((task, index) => 
+            index === mapSelectorTaskIndex 
+              ? { ...task, location }
+              : task
+          )
+        }));
+      }
+      setShowMapSelector(false);
+    };
+
+    const openMapSelector = (type: 'extraction' | 'task', taskIndex?: number) => {
+      setMapSelectorType(type);
+      if (type === 'task' && taskIndex !== undefined) {
+        setMapSelectorTaskIndex(taskIndex);
+      }
+      setShowMapSelector(true);
+    };
+
     return (
       <div className="admin-content">
-        <div className="game-header">
-          <h2>🎮 {localStorage.getItem('editingGameId') ? 'Edit Game' : 'Create New Game'}</h2>
-          <button 
-            className="btn btn-secondary" 
-            onClick={() => {
-              // Clean up editing state when canceling
-              localStorage.removeItem('editingGameId');
-              setSelectedView('overview');
-            }}
-            style={{ marginBottom: '1rem' }}
-          >
-            ← Cancel
-          </button>
+        <div className="klopjacht-header">
+          <div className="header-title">
+            <h2>CREATE NEW KLOPJACHT GAME</h2>
+            <div className="header-subtitle">STEP {currentStep} OF 3 - {
+              currentStep === 1 ? 'BASIC GAME INFORMATION' :
+              currentStep === 2 ? 'EXTRACTION POINT LOCATION' :
+              'MISSION TASKS SETUP'
+            }</div>
+          </div>
+          <div className="header-actions">
+            <button 
+              className="btn btn-secondary btn-large" 
+              onClick={() => setSelectedView('games')}
+            >
+              ← BACK TO GAMES
+            </button>
+          </div>
         </div>
 
-        <div className="create-game-steps">
-          <div className="step-indicator">
-            <div className={`step ${currentStep >= 1 ? 'active' : ''}`}>1. Basic Info</div>
-            <div className={`step ${currentStep >= 2 ? 'active' : ''}`}>2. Extraction Point</div>
-            <div className={`step ${currentStep >= 3 ? 'active' : ''}`}>3. Tasks (6)</div>
-          </div>
-
-          <form onSubmit={handleFormSubmit}>
-            {currentStep === 1 && (
-              <div className="form-step">
-                <h3>Game Basic Information</h3>
+        <form onSubmit={handleSubmitGame} className="create-game-form">
+          {currentStep === 1 && (
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>BASIC GAME INFORMATION</h4>
+                  <div className="game-code">STEP 1 OF 3</div>
+                </div>
+                <div className="status-badge-enhanced setup">SETUP</div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
                 <div className="form-group">
-                  <label>Game Name:</label>
+                  <label htmlFor="gameName">Game Name *</label>
                   <input
                     type="text"
+                    id="gameName"
                     value={gameForm.name}
                     onChange={(e) => setGameForm(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Enter game name (e.g., Downtown Chase)"
+                    placeholder="Enter game name (e.g., Downtown Chase, Campus Hunt)"
                     required
+                    className="form-control"
                   />
                 </div>
-                <div className="form-group">
-                  <label>Duration (minutes):</label>
-                  <input
-                    type="number"
-                    value={gameForm.duration}
-                    onChange={(e) => setGameForm(prev => ({ ...prev, duration: Math.max(30, parseInt(e.target.value) || 30) }))}
-                    min="30"
-                    max="480"
-                    required
-                  />
-                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
-                    Minimum 30 minutes, maximum 480 minutes (8 hours)
-                  </small>
-                </div>
-                <div className="form-group">
-                  <label>Max Players:</label>
-                  <input
-                    type="number"
-                    value={gameForm.maxPlayers}
-                    onChange={(e) => setGameForm(prev => ({ ...prev, maxPlayers: parseInt(e.target.value) }))}
-                    min="4"
-                    max="50"
-                    required
-                  />
-                </div>
-                <button type="button" className="btn btn-primary" onClick={() => setCurrentStep(2)}>
-                  Next: Set Extraction Point →
-                </button>
-              </div>
-            )}
 
-            {currentStep === 2 && (
-              <div className="form-step">
-                <h3>Extraction Point</h3>
-                <p>Set the final escape location where fugitives must reach to win.</p>
-                
-                <div className="location-setting">
-                  {gameForm.extractionPoint.address ? (
-                    <div className="location-display">
-                      <strong>📍 {gameForm.extractionPoint.address}</strong>
-                      <br />
-                      <small>Coordinates: {gameForm.extractionPoint.lat}, {gameForm.extractionPoint.lng}</small>
-                    </div>
-                  ) : (
-                    <div className="no-location">No extraction point set</div>
-                  )}
-                  
-                  <div className="location-input-options">
-                    <div className="form-group">
-                      <label>Enter Address Manually:</label>
-                      <input
-                        type="text"
-                        placeholder="e.g., Dam Square, Amsterdam or Central Station, Rotterdam"
-                        onKeyPress={async (e) => {
-                          if (e.key === 'Enter') {
-                            const target = e.target as HTMLInputElement;
-                            const address = target.value.trim();
-                            if (address) {
-                              try {
-                                // Real geocoding using Nominatim API (OpenStreetMap)
-                                const response = await fetch(
-                                  `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
-                                );
-                                const data = await response.json();
-                                
-                                if (data && data.length > 0) {
-                                  const result = data[0];
-                                  const coordinates = {
-                                    lat: parseFloat(result.lat),
-                                    lng: parseFloat(result.lon),
-                                    address: result.display_name
-                                  };
-                                  handleLocationSelect(coordinates);
-                                  target.value = '';
-                                } else {
-                                  alert('Address not found. Please try a different address or use the map.');
-                                }
-                              } catch (error) {
-                                console.error('Geocoding error:', error);
-                                alert('Error finding address. Please try again or use the map.');
-                              }
-                            }
-                          }
-                        }}
-                        style={{ marginBottom: '0.5rem' }}
-                      />
-                      <small style={{ color: '#666', fontSize: '0.8rem' }}>
-                        Press Enter to set location, or use the map below
-                      </small>
-                    </div>
-                    
-                    <div style={{ textAlign: 'center', margin: '1rem 0', color: '#888' }}>
-                      — OR —
-                    </div>
-                    
-                    <button 
-                      type="button" 
-                      className="btn btn-info" 
-                      onClick={() => handleSetLocation('extraction')}
-                    >
-                      {gameForm.extractionPoint.address ? 'Change Location on Map' : 'Set Location on Map'}
-                    </button>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="duration">Duration (minutes) *</label>
+                    <input
+                      type="number"
+                      id="duration"
+                      value={gameForm.duration}
+                      onChange={(e) => setGameForm(prev => ({ ...prev, duration: parseInt(e.target.value) || 30 }))}
+                      min="30"
+                      max="300"
+                      required
+                      className="form-control"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="maxPlayers">Max Players *</label>
+                    <input
+                      type="number"
+                      id="maxPlayers"
+                      value={gameForm.maxPlayers}
+                      onChange={(e) => setGameForm(prev => ({ ...prev, maxPlayers: parseInt(e.target.value) || 20 }))}
+                      min="2"
+                      max="50"
+                      required
+                      className="form-control"
+                    />
                   </div>
                 </div>
-                <div className="step-navigation">
-                  <button type="button" className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
-                    ← Previous
+
+                <div className="form-actions">
+                  <button 
+                    type="button" 
+                    className="btn-enhanced btn-primary-enhanced"
+                    onClick={() => setCurrentStep(2)}
+                    disabled={!gameForm.name || gameForm.duration < 30}
+                  >
+                    NEXT: EXTRACTION POINT →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {currentStep === 2 && (
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>EXTRACTION POINT LOCATION</h4>
+                  <div className="game-code">STEP 2 OF 3</div>
+                </div>
+                <div className="status-badge-enhanced setup">SETUP</div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                <div className="form-group">
+                  <label>Extraction Point *</label>
+                  <div className="location-selector">
+                    <input
+                      type="text"
+                      value={gameForm.extractionPoint.address}
+                      onChange={(e) => setGameForm(prev => ({
+                        ...prev,
+                        extractionPoint: { ...prev.extractionPoint, address: e.target.value }
+                      }))}
+                      placeholder="Enter address manually or click 'Select on Map'"
+                      className="form-control"
+                    />
+                    <button
+                      type="button"
+                      className="btn-enhanced btn-info-enhanced"
+                      onClick={() => openMapSelector('extraction')}
+                    >
+                      📍 SELECT ON MAP
+                    </button>
+                  </div>
+                  {gameForm.extractionPoint.lat !== 0 && gameForm.extractionPoint.lng !== 0 && (
+                    <small className="form-help" style={{ color: '#28a745', fontWeight: 'bold' }}>
+                      📍 Coordinates: {gameForm.extractionPoint.lat.toFixed(4)}, {gameForm.extractionPoint.lng.toFixed(4)}
+                    </small>
+                  )}
+                  <small className="form-help">
+                    The extraction point is where fugitives must reach to win the game. You can type an address manually or select on the map.
+                  </small>
+                </div>
+
+                <div className="form-actions">
+                  <button 
+                    type="button" 
+                    className="btn-enhanced btn-secondary-enhanced"
+                    onClick={() => setCurrentStep(1)}
+                  >
+                    ← BACK
                   </button>
                   <button 
                     type="button" 
-                    className="btn btn-primary" 
+                    className="btn-enhanced btn-primary-enhanced"
                     onClick={() => setCurrentStep(3)}
                     disabled={!gameForm.extractionPoint.address}
                   >
-                    Next: Create Tasks →
+                    NEXT: MISSION TASKS →
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {currentStep === 3 && (
-              <div className="form-step">
-                <h3>Create 6 Tasks</h3>
-                <p>Fugitives must complete these tasks to get the extraction point coordinates.</p>
-                <div className="tasks-list">
+          {currentStep === 3 && (
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>MISSION TASKS SETUP</h4>
+                  <div className="game-code">STEP 3 OF 3</div>
+                </div>
+                <div className="status-badge-enhanced setup">
+                  {gameForm.tasks.filter(t => t.question && t.answer && t.location.address).length}/6 TASKS
+                </div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                <div className="tasks-grid">
                   {gameForm.tasks.map((task, index) => (
-                    <div key={task.id} className="task-form">
-                      <h4>Task {task.id}</h4>
+                    <div key={task.id} className="task-form-item">
+                      <h5>Mission {task.id} {task.id === 6 ? '(EXTRACTION POINT)' : ''}</h5>
+                      
                       <div className="form-group">
-                        <label>Question:</label>
+                        <label>Question *</label>
                         <input
                           type="text"
                           value={task.question}
@@ -2087,11 +1194,13 @@ const AdminDashboard = () => {
                               i === index ? { ...t, question: e.target.value } : t
                             )
                           }))}
-                          placeholder="Enter the task question"
+                          placeholder={task.id === 6 ? "Question for the extraction point task" : "What question should players answer?"}
+                          className="form-control"
                         />
                       </div>
+
                       <div className="form-group">
-                        <label>Answer:</label>
+                        <label>Answer *</label>
                         <input
                           type="text"
                           value={task.answer}
@@ -2101,164 +1210,450 @@ const AdminDashboard = () => {
                               i === index ? { ...t, answer: e.target.value } : t
                             )
                           }))}
-                          placeholder="Enter the correct answer"
+                          placeholder="What is the correct answer?"
+                          className="form-control"
                         />
                       </div>
+
                       <div className="form-group">
-                        <label>Task Location:</label>
+                        <label>Location *</label>
                         {task.id === 6 ? (
-                          // Task 6 automatically uses extraction point
-                          <div className="location-display extraction-point-notice">
-                            {gameForm.extractionPoint.address ? (
-                              <>
-                                <strong>📍 {gameForm.extractionPoint.address}</strong>
-                                <br />
-                                <small>Coordinates: {gameForm.extractionPoint.lat}, {gameForm.extractionPoint.lng}</small>
-                                <br />
-                                <em style={{ color: '#4A90E2', fontSize: '0.9rem' }}>
-                                  ✓ Automatically set to Extraction Point (Final Task)
-                                </em>
-                              </>
-                            ) : (
-                              <em style={{ color: '#888' }}>
-                                Will be set automatically when you set the Extraction Point
-                              </em>
-                            )}
+                          <div className="location-selector">
+                            <input
+                              type="text"
+                              value={gameForm.extractionPoint.address || 'Extraction point from Step 2'}
+                              readOnly
+                              className="form-control"
+                              style={{ 
+                                backgroundColor: '#ffebee', 
+                                borderColor: '#f44336',
+                                color: '#d32f2f',
+                                fontStyle: 'italic',
+                                fontWeight: 'bold'
+                              }}
+                            />
+                            <div className="btn-enhanced btn-secondary-enhanced btn-small" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                              🎯 EXTRACTION
+                            </div>
                           </div>
                         ) : (
-                          // Tasks 1-5 can have custom locations
-                          <>
-                            {task.location.address ? (
-                              <div className="location-display">
-                                <strong>📍 {task.location.address}</strong>
-                                <br />
-                                <small>Coordinates: {task.location.lat}, {task.location.lng}</small>
-                              </div>
-                            ) : (
-                              <div className="no-location">No location set</div>
-                            )}
-                            
-                            <div className="location-input-options" style={{ marginTop: '0.5rem' }}>
-                              <input
-                                type="text"
-                                placeholder="Enter address and press Enter"
-                                onKeyPress={async (e) => {
-                                  if (e.key === 'Enter') {
-                                    const target = e.target as HTMLInputElement;
-                                    const address = target.value.trim();
-                                    if (address) {
-                                      try {
-                                        // Real geocoding using Nominatim API (OpenStreetMap)
-                                        const response = await fetch(
-                                          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
-                                        );
-                                        const data = await response.json();
-                                        
-                                        if (data && data.length > 0) {
-                                          const result = data[0];
-                                          const coordinates = {
-                                            lat: parseFloat(result.lat),
-                                            lng: parseFloat(result.lon),
-                                            address: result.display_name
-                                          };
-                                          setGameForm(prev => ({
-                                            ...prev,
-                                            tasks: prev.tasks.map((t, i) => 
-                                              i === index ? { ...t, location: coordinates } : t
-                                            )
-                                          }));
-                                          target.value = '';
-                                        } else {
-                                          alert('Address not found. Please try a different address or use the map.');
-                                        }
-                                      } catch (error) {
-                                        console.error('Geocoding error:', error);
-                                        alert('Error finding address. Please try again or use the map.');
-                                      }
-                                    }
-                                  }
-                                }}
-                                style={{ width: '100%', marginBottom: '0.5rem', fontSize: '0.9rem' }}
-                              />
-                              <button 
-                                type="button" 
-                                className="btn-small btn-info" 
-                                onClick={() => handleSetLocation('task', index)}
-                              >
-                                {task.location.address ? 'Change on Map' : 'Set on Map'}
-                              </button>
-                            </div>
-                          </>
+                          <div className="location-selector">
+                            <input
+                              type="text"
+                              value={task.location.address}
+                              placeholder="Click 'Select on Map' to choose location"
+                              readOnly
+                              className="form-control"
+                            />
+                            <button
+                              type="button"
+                              className="btn-enhanced btn-info-enhanced btn-small"
+                              onClick={() => openMapSelector('task', index)}
+                            >
+                              📍 MAP
+                            </button>
+                          </div>
+                        )}
+                        {task.id !== 6 && task.location.lat !== 0 && task.location.lng !== 0 && (
+                          <small className="form-help" style={{ color: '#28a745', fontWeight: 'bold' }}>
+                            📍 Coordinates: {task.location.lat.toFixed(4)}, {task.location.lng.toFixed(4)}
+                          </small>
+                        )}
+                        {task.id === 6 && (
+                          <small className="form-help" style={{ color: '#6c757d', fontStyle: 'italic' }}>
+                            Task 6 automatically uses the extraction point location from Step 2
+                          </small>
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="step-navigation">
-                  <button type="button" className="btn btn-secondary" onClick={() => setCurrentStep(2)}>
-                    ← Previous
+
+                <div className="form-actions">
+                  <button 
+                    type="button" 
+                    className="btn-enhanced btn-secondary-enhanced"
+                    onClick={() => setCurrentStep(2)}
+                  >
+                    ← BACK
                   </button>
                   <button 
                     type="submit" 
-                    className="btn btn-success"
-                    disabled={(() => {
-                      const validTasks = gameForm.tasks.filter(t => 
-                        t.question && t.question.trim().length >= 10 && 
-                        t.answer && t.answer.trim().length >= 1 && 
-                        t.location.address && t.location.address.trim().length > 0
-                      );
-                      const isFormValid = validTasks.length === 6 && 
-                                         gameForm.name.trim().length >= 3 && 
-                                         gameForm.extractionPoint.address && 
-                                         gameForm.extractionPoint.address.trim().length > 0;
-                      
-                      // Debug logging
-                      console.log('Form validation check:', {
-                        validTasksCount: validTasks.length,
-                        gameNameLength: gameForm.name.trim().length,
-                        hasExtractionPoint: !!gameForm.extractionPoint.address,
-                        isFormValid,
-                        buttonDisabled: !isFormValid
-                      });
-                      
-                      return !isFormValid;
-                    })()}
+                    className="btn-enhanced btn-success-enhanced"
+                    disabled={loading || gameForm.tasks.filter(t => t.question && t.answer && t.location.address).length === 0}
                   >
-                    {(() => {
-                      const validTasks = gameForm.tasks.filter(t => 
-                        t.question && t.question.trim().length >= 10 && 
-                        t.answer && t.answer.trim().length >= 1 && 
-                        t.location.address && t.location.address.trim().length > 0
-                      );
-                      const isFormValid = validTasks.length === 6 && 
-                                         gameForm.name.trim().length >= 3 && 
-                                         gameForm.extractionPoint.address && 
-                                         gameForm.extractionPoint.address.trim().length > 0;
-                      
-                      if (!isFormValid) {
-                        return `Complete All Fields (${validTasks.length}/6 tasks ready)`;
-                      }
-                      const isEditing = !!localStorage.getItem('editingGameId');
-                      return isEditing ? 'Save Game 💾' : 'Create Game 🎮';
-                    })()}
+                    {loading ? 'CREATING GAME...' : '🎮 CREATE GAME'}
                   </button>
                 </div>
-                <div className="task-progress">
-                  Valid Tasks: {gameForm.tasks.filter(t => 
-                    t.question && t.question.length >= 10 && 
-                    t.answer && t.answer.length >= 1 && 
-                    t.location.address
-                  ).length}/6
-                  <br />
-                  <small>
-                    Questions ≥10 chars: {gameForm.tasks.filter(t => t.question && t.question.length >= 10).length}/6 |
-                    Answers ≥1 char: {gameForm.tasks.filter(t => t.answer && t.answer.length >= 1).length}/6 |
-                    Locations set: {gameForm.tasks.filter(t => t.location.address).length}/6
-                  </small>
+              </div>
+            </div>
+          )}
+        </form>
+
+        {showMapSelector && (
+          <MapSelector
+            onLocationSelect={handleLocationSelect}
+            onClose={() => setShowMapSelector(false)}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const renderGameDetails = (gameCode: string) => {
+    const game = games.find(g => g.gameCode === gameCode || g.code === gameCode);
+    
+    if (!game) {
+      return (
+        <div className="admin-content">
+          <div className="klopjacht-header">
+            <div className="header-title">
+              <h2>GAME NOT FOUND</h2>
+              <div className="header-subtitle">UNABLE TO LOCATE REQUESTED GAME</div>
+            </div>
+            <div className="header-actions">
+              <button 
+                className="btn btn-secondary btn-large" 
+                onClick={() => setSelectedView('games')}
+              >
+                ← BACK TO GAMES
+              </button>
+            </div>
+          </div>
+          <div className="no-games-enhanced">
+            <div className="no-games-icon">❌</div>
+            <div className="no-games-title">GAME NOT FOUND</div>
+            <div className="no-games-subtitle">Could not find game with code: {gameCode}</div>
+            <div style={{ marginTop: '1rem', color: '#888' }}>Available games: {games.length}</div>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="admin-content">
+        <div className="klopjacht-header">
+          <div className="header-title">
+            <h2>KLOPJACHT: {game.name.toUpperCase()}</h2>
+            <div className="header-subtitle">GAME CODE: #{game.gameCode} | COMPLETE GAME MANAGEMENT</div>
+          </div>
+          <div className="header-actions">
+            <button 
+              className="btn btn-secondary btn-large" 
+              onClick={() => setSelectedView('games')}
+            >
+              ← BACK TO GAMES
+            </button>
+          </div>
+        </div>
+        
+        <div className="klopjacht-games-section">
+          <div className="klopjacht-games-grid">
+            {/* Game Status & Actions Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>GAME STATUS & ACTIONS</h4>
+                  <div className="game-code">CONTROL CENTER</div>
+                </div>
+                <div className={`status-badge-enhanced ${game.status}`}>
+                  {game.status?.toUpperCase() || 'UNKNOWN'}
                 </div>
               </div>
-            )}
-          </form>
+              
+              <div className="game-card-body-enhanced">
+                <div className="game-info-grid">
+                  <div className="info-item">
+                    <div className="info-label">STATUS</div>
+                    <div className="info-value">{game.status?.toUpperCase() || 'UNKNOWN'}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">PLAYERS</div>
+                    <div className="info-value">{game.players || 0}/{game.maxPlayers || 20}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">STARTED</div>
+                    <div className="info-value">{game.startTime ? new Date(game.startTime).toLocaleString() : 'Not started'}</div>
+                  </div>
+                  <div className="info-item">
+                    <div className="info-label">CREATOR</div>
+                    <div className="info-value">{typeof game.createdBy === 'object' ? game.createdBy?.name || 'Unknown' : game.createdBy || 'Unknown'}</div>
+                  </div>
+                </div>
+                
+                {(game.status === 'active' || game.status === 'paused') && (
+                  <div className="game-timer">
+                    <div className="timer-label">
+                      {game.status === 'active' ? 'TIME REMAINING' : 'TIME REMAINING (PAUSED)'}
+                    </div>
+                    <div className="timer-value">{gameTimeRemaining[game.gameCode] || calculateGameTimeRemaining(game)}</div>
+                  </div>
+                )}
+                
+                {/* Game Control Actions */}
+                <div className="game-control-actions" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {game.status === 'active' && (
+                    <button 
+                      className="btn-enhanced btn-warning-enhanced"
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to pause this game?')) {
+                          try {
+                            const response = await fetch(`${API_ENDPOINTS.GAMES}/${game._id || game.id}/pause`, {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                'Content-Type': 'application/json'
+                              }
+                            });
+                            
+                            if (response.ok) {
+                              alert('Game paused successfully!');
+                              fetchData(); // Refresh data
+                            } else {
+                              alert('Failed to pause game');
+                            }
+                          } catch (error) {
+                            console.error('Error pausing game:', error);
+                            alert('Error pausing game');
+                          }
+                        }
+                      }}
+                    >
+                      ⏸️ PAUSE GAME
+                    </button>
+                  )}
+                  
+                  {game.status === 'paused' && (
+                    <button 
+                      className="btn-enhanced btn-success-enhanced"
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to resume this game?')) {
+                          try {
+                            const response = await fetch(`${API_ENDPOINTS.GAMES}/${game._id || game.id}/resume`, {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                'Content-Type': 'application/json'
+                              }
+                            });
+                            
+                            if (response.ok) {
+                              alert('Game resumed successfully!');
+                              fetchData(); // Refresh data
+                            } else {
+                              alert('Failed to resume game');
+                            }
+                          } catch (error) {
+                            console.error('Error resuming game:', error);
+                            alert('Error resuming game');
+                          }
+                        }
+                      }}
+                    >
+                      ▶️ RESUME GAME
+                    </button>
+                  )}
+                  
+                  {(game.status === 'setup' || game.status === 'waiting') && (
+                    <button 
+                      className="btn-enhanced btn-success-enhanced"
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to start this game?')) {
+                          try {
+                            const response = await fetch(`${API_ENDPOINTS.GAMES}/${game._id || game.id}/start`, {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                'Content-Type': 'application/json'
+                              }
+                            });
+                            
+                            if (response.ok) {
+                              alert('Game started successfully!');
+                              fetchData(); // Refresh data
+                            } else {
+                              alert('Failed to start game');
+                            }
+                          } catch (error) {
+                            console.error('Error starting game:', error);
+                            alert('Error starting game');
+                          }
+                        }
+                      }}
+                    >
+                      🚀 START GAME
+                    </button>
+                  )}
+                  
+                  {(game.status === 'active' || game.status === 'paused') && (
+                    <button 
+                      className="btn-enhanced btn-danger-enhanced"
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to end this game? This action cannot be undone.')) {
+                          try {
+                            const response = await fetch(`${API_ENDPOINTS.GAMES}/${game._id || game.id}/end`, {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                'Content-Type': 'application/json'
+                              }
+                            });
+                            
+                            if (response.ok) {
+                              alert('Game ended successfully!');
+                              fetchData(); // Refresh data
+                            } else {
+                              alert('Failed to end game');
+                            }
+                          } catch (error) {
+                            console.error('Error ending game:', error);
+                            alert('Error ending game');
+                          }
+                        }
+                      }}
+                    >
+                      🏁 END GAME
+                    </button>
+                  )}
+                  
+                  {/* Delete button - always available but with different warnings based on status */}
+                  <button 
+                    className="btn-enhanced btn-danger-enhanced"
+                    onClick={async () => {
+                      let confirmMessage = 'Are you sure you want to delete this game? This action cannot be undone and will remove all game data.';
+                      
+                      if (game.status === 'active') {
+                        confirmMessage = '⚠️ WARNING: This game is currently ACTIVE with players! Deleting it will immediately end the game and remove all data. Are you absolutely sure?';
+                      } else if (game.status === 'paused') {
+                        confirmMessage = '⚠️ WARNING: This game is PAUSED with players! Deleting it will permanently end the game and remove all data. Are you absolutely sure?';
+                      }
+                      
+                      if (window.confirm(confirmMessage)) {
+                        try {
+                          const response = await fetch(`${API_ENDPOINTS.GAMES}/${game._id || game.id}`, {
+                            method: 'DELETE',
+                            headers: {
+                              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            }
+                          });
+                          
+                          if (response.ok) {
+                            alert('Game deleted successfully!');
+                            setSelectedView('games'); // Go back to games list
+                            fetchData(); // Refresh data
+                          } else {
+                            alert('Failed to delete game');
+                          }
+                        } catch (error) {
+                          console.error('Error deleting game:', error);
+                          alert('Error deleting game');
+                        }
+                      }
+                    }}
+                  >
+                    🗑️ DELETE GAME
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Players Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>ACTIVE PLAYERS</h4>
+                  <div className="game-code">JOINED PLAYERS</div>
+                </div>
+                <div className="status-badge-enhanced active">
+                  {game.joinedPlayers?.length || 0} JOINED
+                </div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                {game.joinedPlayers && game.joinedPlayers.length > 0 ? (
+                  <div className="game-players-list">
+                    {game.joinedPlayers.map((player: any, index: number) => (
+                      <div key={player._id || player.id || index} className="game-player-item">
+                        <div className="player-info">
+                          <div className="player-name">
+                            <strong>{player.name?.toUpperCase() || 'UNKNOWN PLAYER'}</strong>
+                          </div>
+                          <div className="player-details">
+                            <span className={`player-role ${player.role}`}>
+                              {player.role?.toUpperCase() || 'UNKNOWN'}
+                            </span>
+                            {player.team && (
+                              <span className="player-team">
+                                Team: {player.team}
+                              </span>
+                            )}
+                          </div>
+                          <div className="player-status">
+                            <div className="status-item">
+                              <span className="status-label">Status:</span>
+                              <span className={`status-value ${player.status || 'unknown'}`}>
+                                {player.status?.toUpperCase() || 'UNKNOWN'}
+                              </span>
+                            </div>
+                            <div className="status-item">
+                              <span className="status-label">Tasks:</span>
+                              <span className="status-value">
+                                {player.tasksCompleted || 0}/6
+                              </span>
+                            </div>
+                            {player.lastSeen && (
+                              <div className="status-item">
+                                <span className="status-label">Last Seen:</span>
+                                <span className="status-value">
+                                  {new Date(player.lastSeen).toLocaleTimeString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="player-actions">
+                          <button 
+                            className="btn-enhanced btn-info-enhanced btn-small"
+                            onClick={() => handleViewLocation(player)}
+                            title="View player location"
+                          >
+                            📍 LOCATION
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="no-games-enhanced" style={{ padding: '2rem 1rem' }}>
+                    <div className="no-games-icon">👥</div>
+                    <div className="no-games-title">NO PLAYERS JOINED</div>
+                    <div className="no-games-subtitle">
+                      {game.status === 'setup' || game.status === 'waiting' 
+                        ? 'Players can join once the game starts' 
+                        : 'No players have joined this game yet'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* QR Codes Card */}
+            <div className="klopjacht-game-card">
+              <div className="game-card-header-enhanced">
+                <div className="game-title">
+                  <h4>MISSION QR CODES</h4>
+                  <div className="game-code">FUGITIVE TASKS: {game.tasks?.length || 0}/6</div>
+                </div>
+                <div className="status-badge-enhanced setup">
+                  {game.tasks?.length || 0} QR CODES
+                </div>
+              </div>
+              
+              <div className="game-card-body-enhanced">
+                <QRCodesDisplay gameId={game._id || game.id} />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -2274,17 +1669,19 @@ const AdminDashboard = () => {
         }</h1>
         
         <div className="admin-nav">
-          <button 
-            className={`nav-btn ${selectedView === 'overview' ? 'active' : ''}`}
-            onClick={() => setSelectedView('overview')}
-          >
-            Overview
-          </button>
+          {localStorage.getItem('userRole') === 'super_admin' && (
+            <button 
+              className={`nav-btn ${selectedView === 'overview' ? 'active' : ''}`}
+              onClick={() => setSelectedView('overview')}
+            >
+              Overview
+            </button>
+          )}
           <button 
             className={`nav-btn ${selectedView === 'games' ? 'active' : ''}`}
             onClick={() => setSelectedView('games')}
           >
-            All Games
+            {localStorage.getItem('userRole') === 'game_lead' ? 'My Games' : 'All Games'}
           </button>
           {localStorage.getItem('userRole') === 'super_admin' && (
             <button 
@@ -2306,10 +1703,9 @@ const AdminDashboard = () => {
           </button>
         </div>
 
-        {selectedView === 'overview' && renderOverview()}
+        {selectedView === 'overview' && localStorage.getItem('userRole') === 'super_admin' && renderOverview()}
         {selectedView === 'games' && renderAllGames()}
         {selectedView === 'create-game' && renderCreateGame()}
-        {selectedView === 'edit-game' && renderCreateGame()} {/* Reuse create game form for editing */}
         {selectedView.startsWith('game-') && renderGameDetails(selectedView.split('-')[1])}
 
         <div className="actions">
@@ -2324,8 +1720,26 @@ const AdminDashboard = () => {
 
       {showMapSelector && (
         <MapSelector
-          onLocationSelect={handleLocationSelect}
-          onClose={handleMapClose}
+          onLocationSelect={(location) => {
+            console.log('Location selected:', location);
+            if (mapSelectorType === 'extraction') {
+              setGameForm(prev => ({
+                ...prev,
+                extractionPoint: location
+              }));
+            } else if (mapSelectorType === 'task') {
+              setGameForm(prev => ({
+                ...prev,
+                tasks: prev.tasks.map((task, index) => 
+                  index === mapSelectorTaskIndex 
+                    ? { ...task, location }
+                    : task
+                )
+              }));
+            }
+            setShowMapSelector(false);
+          }}
+          onClose={() => setShowMapSelector(false)}
         />
       )}
     </div>

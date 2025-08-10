@@ -85,7 +85,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 
   const games = await Game.paginate(query, options);
   
-  // Add player counts to each game
+  // Add player counts and joined players to each game
   for (let game of games.docs) {
     const playerCounts = await Player.aggregate([
       { $match: { game: game._id } },
@@ -97,6 +97,13 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
       hunters: playerCounts.find(p => p._id === 'hunter')?.count || 0,
       spectators: playerCounts.find(p => p._id === 'spectator')?.count || 0
     };
+
+    // Add joined players data
+    const joinedPlayers = await Player.find({ game: game._id })
+      .select('name role team status tasksCompleted lastSeen currentLocation')
+      .lean();
+    
+    game._doc.joinedPlayers = joinedPlayers;
   }
 
   res.json({
@@ -140,6 +147,13 @@ router.get('/:id', authenticateToken, requireOwnershipOrAdmin(), asyncHandler(as
     hunters: playerCounts.find(p => p._id === 'hunter')?.count || 0,
     spectators: playerCounts.find(p => p._id === 'spectator')?.count || 0
   };
+
+  // Add joined players data
+  const joinedPlayers = await Player.find({ game: game._id })
+    .select('name role team status tasksCompleted lastSeen currentLocation')
+    .lean();
+  
+  game._doc.joinedPlayers = joinedPlayers;
 
   res.json({ game });
 }));

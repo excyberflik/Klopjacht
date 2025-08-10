@@ -168,23 +168,25 @@ const MapSelector: React.FC<MapSelectorProps> = ({ initialLocation, onLocationSe
           const { latitude, longitude } = position.coords;
           setCurrentLocation([latitude, longitude]);
           setLocationLoading(false);
+          console.log('Current location detected:', latitude, longitude);
         },
         (error) => {
-          console.warn('Geolocation failed:', error);
-          // Fallback to Amsterdam if geolocation fails
-          setCurrentLocation([52.3676, 4.9041]);
+          console.warn('Geolocation failed:', error.message);
+          // Better fallback based on user's likely location (Belgium/Netherlands region)
+          // Default to Brussels, Belgium as it's more central for the region
+          setCurrentLocation([50.8503, 4.3517]);
           setLocationLoading(false);
         },
         {
           enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
+          timeout: 15000, // Increased timeout for better accuracy
+          maximumAge: 60000 // 1 minute cache
         }
       );
     } else {
-      console.warn('Geolocation not supported');
-      // Fallback to Amsterdam if geolocation not supported
-      setCurrentLocation([52.3676, 4.9041]);
+      console.warn('Geolocation not supported by this browser');
+      // Fallback to Brussels, Belgium
+      setCurrentLocation([50.8503, 4.3517]);
       setLocationLoading(false);
     }
   }, [initialLocation]);
