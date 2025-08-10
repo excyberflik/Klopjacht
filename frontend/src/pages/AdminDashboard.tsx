@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MapSelector from '../components/MapSelector';
+import GameMap from '../components/GameMap';
 import { API_ENDPOINTS } from '../config/api';
 
 interface PredefinedPlayer {
@@ -350,6 +351,8 @@ const AdminDashboard = () => {
   const [showMapSelector, setShowMapSelector] = useState(false);
   const [mapSelectorType, setMapSelectorType] = useState<'extraction' | 'task'>('extraction');
   const [mapSelectorTaskIndex, setMapSelectorTaskIndex] = useState<number>(0);
+  const [showPlayersMap, setShowPlayersMap] = useState(false);
+  const [selectedGameForMap, setSelectedGameForMap] = useState<any>(null);
 
   // Real data state
   const [games, setGames] = useState<any[]>([]);
@@ -1184,27 +1187,32 @@ const AdminDashboard = () => {
               </div>
               
               <div className="game-card-body-enhanced">
-                <div className="form-group">
-                  <label>Extraction Point *</label>
-                  <div className="location-selector">
-                    <input
-                      type="text"
-                      value={gameForm.extractionPoint.address}
-                      onChange={(e) => setGameForm(prev => ({
-                        ...prev,
-                        extractionPoint: { ...prev.extractionPoint, address: e.target.value }
-                      }))}
-                      placeholder="Enter address manually or click 'Select on Map'"
-                      className="form-control"
-                    />
-                    <button
-                      type="button"
-                      className="btn-enhanced btn-info-enhanced"
-                      onClick={() => openMapSelector('extraction')}
-                    >
-                      📍 SELECT ON MAP
-                    </button>
-                  </div>
+                  <div className="form-group">
+                    <label>Extraction Point *</label>
+                    <div className="location-selector">
+                      <input
+                        type="text"
+                        value={gameForm.extractionPoint.address}
+                        onChange={(e) => setGameForm(prev => ({
+                          ...prev,
+                          extractionPoint: { ...prev.extractionPoint, address: e.target.value }
+                        }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault(); // Prevent form submission
+                          }
+                        }}
+                        placeholder="Enter address manually or click 'Select on Map'"
+                        className="form-control"
+                      />
+                      <button
+                        type="button"
+                        className="btn-enhanced btn-info-enhanced"
+                        onClick={() => openMapSelector('extraction')}
+                      >
+                        📍 SELECT ON MAP
+                      </button>
+                    </div>
                   {gameForm.extractionPoint.lat !== 0 && gameForm.extractionPoint.lng !== 0 && (
                     <small className="form-help" style={{ color: '#28a745', fontWeight: 'bold' }}>
                       📍 Coordinates: {gameForm.extractionPoint.lat.toFixed(4)}, {gameForm.extractionPoint.lng.toFixed(4)}
@@ -1605,6 +1613,19 @@ const AdminDashboard = () => {
                     </button>
                   )}
                   
+                  {/* View All Players Map button */}
+                  <button 
+                    className="btn-enhanced btn-info-enhanced"
+                    onClick={() => {
+                      setSelectedGameForMap(game);
+                      setShowPlayersMap(true);
+                    }}
+                    disabled={!game.joinedPlayers || game.joinedPlayers.length === 0}
+                    title={!game.joinedPlayers || game.joinedPlayers.length === 0 ? 'No players to show on map' : 'View all player locations on map'}
+                  >
+                    🗺️ VIEW PLAYERS MAP
+                  </button>
+                  
                   {/* Delete button - always available but with different warnings based on status */}
                   <button 
                     className="btn-enhanced btn-danger-enhanced"
@@ -1687,7 +1708,7 @@ const AdminDashboard = () => {
                             <div className="status-item">
                               <span className="status-label">Tasks:</span>
                               <span className="status-value">
-                                {player.completedTasks?.length || player.tasksCompleted || 0}/6
+                                {player.completedTasks?.length || player.gameStats?.tasksCompleted || player.tasksCompleted || 0}/6
                               </span>
                             </div>
                             {player.lastSeen && (
@@ -1833,6 +1854,627 @@ const AdminDashboard = () => {
           onClose={() => setShowMapSelector(false)}
         />
       )}
+
+      {/* Players Map Modal */}
+      {showPlayersMap && selectedGameForMap && (
+        <div className="players-map-modal">
+          <div className="players-map-overlay" onClick={() => setShowPlayersMap(false)}></div>
+          <div className="players-map-content">
+            <div className="players-map-header">
+              <h3>🗺️ All Players Map - {selectedGameForMap.name}</h3>
+              <button className="close-players-map-btn" onClick={() => setShowPlayersMap(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="players-map-body">
+              <div className="interactive-map-section">
+                <GameMap game={selectedGameForMap} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .players-map-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+        }
+
+        .players-map-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+        }
+
+        .players-map-content {
+          position: relative;
+          background: white;
+          border-radius: 12px;
+          max-width: 800px;
+          width: 100%;
+          max-height: 90vh;
+          overflow: hidden;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-50px) scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .players-map-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem;
+          background: #007bff;
+          color: white;
+        }
+
+        .players-map-header h3 {
+          margin: 0;
+          font-size: 1.2rem;
+        }
+
+        .close-players-map-btn {
+          background: none;
+          border: none;
+          color: white;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: background-color 0.2s;
+        }
+
+        .close-players-map-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .players-map-body {
+          padding: 1.5rem;
+          max-height: calc(90vh - 80px);
+          overflow-y: auto;
+        }
+
+        .players-map-info {
+          margin-bottom: 1.5rem;
+          padding: 1rem;
+          background: #f8f9fa;
+          border-radius: 6px;
+          border-left: 4px solid #007bff;
+        }
+
+        .game-info {
+          color: #495057;
+          line-height: 1.5;
+        }
+
+        .mission-locations-section h4,
+        .players-list-section h4 {
+          color: #007bff;
+          margin-bottom: 1rem;
+          font-size: 1.1rem;
+        }
+
+        .mission-locations-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 1rem;
+          margin-bottom: 2rem;
+        }
+
+        .mission-location-item {
+          border: 1px solid #dee2e6;
+          border-radius: 8px;
+          padding: 1rem;
+          background: #fff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .mission-location-item.extraction-point {
+          border-color: #ffc107;
+          background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        }
+
+        .mission-location-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 1rem;
+        }
+
+        .mission-number {
+          font-size: 1.2rem;
+          font-weight: bold;
+        }
+
+        .mission-title {
+          font-weight: bold;
+          color: #495057;
+        }
+
+        .mission-location-details {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .open-mission-maps-btn {
+          background: #007bff;
+          color: white;
+          border: none;
+          padding: 0.5rem 1rem;
+          border-radius: 6px;
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-weight: bold;
+        }
+
+        .open-mission-maps-btn:hover {
+          background: #0056b3;
+        }
+
+        .no-missions-map {
+          text-align: center;
+          padding: 2rem;
+          color: #6c757d;
+          grid-column: 1 / -1;
+        }
+
+        .no-missions-icon {
+          font-size: 2rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .players-locations-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .player-location-item {
+          border: 1px solid #dee2e6;
+          border-radius: 8px;
+          padding: 1rem;
+          background: #fff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .player-location-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        }
+
+        .player-name {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .player-role-badge {
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: bold;
+        }
+
+        .player-role-badge.fugitive {
+          background: #dc3545;
+          color: white;
+        }
+
+        .player-role-badge.hunter {
+          background: #28a745;
+          color: white;
+        }
+
+        .player-role-badge.spectator {
+          background: #6c757d;
+          color: white;
+        }
+
+        .player-status-badge {
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: bold;
+          background: #007bff;
+          color: white;
+        }
+
+        .player-location-details {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .location-coordinates,
+        .location-address {
+          padding: 0.75rem;
+          background: #f8f9fa;
+          border-radius: 6px;
+          border-left: 4px solid #28a745;
+        }
+
+        .location-coordinates strong,
+        .location-address strong {
+          color: #28a745;
+        }
+
+        .location-actions {
+          text-align: center;
+        }
+
+        .open-player-maps-btn {
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 0.5rem 1rem;
+          border-radius: 6px;
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-weight: bold;
+        }
+
+        .open-player-maps-btn:hover {
+          background: #218838;
+        }
+
+        .no-location {
+          text-align: center;
+          padding: 2rem;
+          color: #6c757d;
+        }
+
+        .no-location-icon {
+          font-size: 2rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .player-stats {
+          display: flex;
+          gap: 1rem;
+          padding: 0.75rem;
+          background: #e9ecef;
+          border-radius: 6px;
+        }
+
+        .stat-item {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .stat-label {
+          font-size: 0.8rem;
+          color: #6c757d;
+          font-weight: bold;
+        }
+
+        .stat-value {
+          font-size: 0.9rem;
+          color: #495057;
+          font-weight: bold;
+        }
+
+        .no-players-map {
+          text-align: center;
+          padding: 3rem;
+          color: #6c757d;
+        }
+
+        .no-players-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+
+        .map-placeholder-section {
+          margin-top: 2rem;
+          padding-top: 2rem;
+          border-top: 1px solid #dee2e6;
+        }
+
+        .map-placeholder {
+          text-align: center;
+          padding: 2rem;
+          background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+          border-radius: 8px;
+          border: 2px dashed #dee2e6;
+        }
+
+        .map-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+
+        .map-text {
+          color: #495057;
+          line-height: 1.5;
+        }
+
+        .interactive-map-section {
+          margin-top: 2rem;
+          padding-top: 2rem;
+          border-top: 1px solid #dee2e6;
+        }
+
+        .interactive-map-section h4 {
+          color: #007bff;
+          margin-bottom: 1rem;
+          font-size: 1.1rem;
+        }
+
+        .embedded-map-container {
+          background: #f8f9fa;
+          border-radius: 8px;
+          padding: 1rem;
+          border: 1px solid #dee2e6;
+        }
+
+        .embedded-map {
+          position: relative;
+        }
+
+        .embedded-map iframe {
+          width: 100%;
+          height: 400px;
+          border: 0;
+          border-radius: 8px;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .map-legend {
+          margin-top: 1rem;
+          padding: 1rem;
+          background: white;
+          border-radius: 6px;
+          border: 1px solid #dee2e6;
+        }
+
+        .legend-title {
+          font-weight: bold;
+          color: #495057;
+          margin-bottom: 0.75rem;
+          font-size: 0.9rem;
+        }
+
+        .legend-items {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.85rem;
+          color: #495057;
+        }
+
+        .legend-marker {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.7rem;
+          font-weight: bold;
+          color: white;
+          text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+        }
+
+        .legend-marker.blue {
+          background: #007bff;
+        }
+
+        .legend-marker.red {
+          background: #dc3545;
+        }
+
+        .legend-marker.green {
+          background: #28a745;
+        }
+
+        .legend-marker.orange {
+          background: #fd7e14;
+        }
+
+        .legend-marker.purple {
+          background: #6f42c1;
+        }
+
+        .no-map-data {
+          text-align: center;
+          padding: 3rem;
+          color: #6c757d;
+        }
+
+        .no-map-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+
+        .no-map-text {
+          font-size: 1rem;
+          color: #6c757d;
+        }
+
+        .visual-map {
+          background: #f8f9fa;
+          border-radius: 8px;
+          padding: 1rem;
+          border: 1px solid #dee2e6;
+        }
+
+        .visual-map-container {
+          background: white;
+          border-radius: 6px;
+          padding: 1.5rem;
+          margin-bottom: 1rem;
+        }
+
+        .visual-map-title {
+          font-size: 1.2rem;
+          font-weight: bold;
+          color: #495057;
+          text-align: center;
+          margin-bottom: 1.5rem;
+        }
+
+        .visual-map-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+          margin-bottom: 2rem;
+        }
+
+        .location-marker {
+          padding: 1rem;
+          border-radius: 8px;
+          text-align: center;
+          border: 2px solid;
+          background: white;
+        }
+
+        .location-marker.blue {
+          border-color: #007bff;
+          background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        }
+
+        .location-marker.red {
+          border-color: #dc3545;
+          background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        }
+
+        .location-marker.green {
+          border-color: #28a745;
+          background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        }
+
+        .location-marker.orange {
+          border-color: #fd7e14;
+          background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        }
+
+        .location-marker.purple {
+          border-color: #6f42c1;
+          background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+        }
+
+        .marker-icon {
+          font-size: 2rem;
+          font-weight: bold;
+          margin-bottom: 0.5rem;
+          color: #495057;
+        }
+
+        .marker-title {
+          font-weight: bold;
+          color: #495057;
+          margin-bottom: 0.5rem;
+          font-size: 0.9rem;
+        }
+
+        .marker-coords {
+          font-family: monospace;
+          font-size: 0.8rem;
+          color: #6c757d;
+          margin-bottom: 1rem;
+        }
+
+        .marker-maps-btn {
+          background: #007bff;
+          color: white;
+          border: none;
+          padding: 0.4rem 0.8rem;
+          border-radius: 4px;
+          font-size: 0.8rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-weight: bold;
+        }
+
+        .marker-maps-btn:hover {
+          background: #0056b3;
+        }
+
+        .visual-map-center {
+          text-align: center;
+          padding: 1.5rem;
+          background: linear-gradient(135deg, #e9ecef 0%, #f8f9fa 100%);
+          border-radius: 6px;
+          border: 1px solid #dee2e6;
+        }
+
+        .center-info {
+          margin-bottom: 1rem;
+          color: #495057;
+          font-size: 0.9rem;
+        }
+
+        .center-maps-btn {
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 0.75rem 1.5rem;
+          border-radius: 6px;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-weight: bold;
+        }
+
+        .center-maps-btn:hover {
+          background: #218838;
+        }
+
+        @media (max-width: 768px) {
+          .players-map-content {
+            margin: 0.5rem;
+            max-width: none;
+          }
+          
+          .players-map-body {
+            padding: 1rem;
+          }
+          
+          .player-location-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+          }
+          
+          .player-stats {
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+        }
+      `}</style>
     </div>
   );
 };

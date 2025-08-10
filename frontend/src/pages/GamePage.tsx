@@ -83,6 +83,8 @@ const GamePage = () => {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [timeExpiredNotified, setTimeExpiredNotified] = useState(false);
   const [showSafetyWarning, setShowSafetyWarning] = useState(true);
+  const [showTaskMap, setShowTaskMap] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   // Get player info from localStorage or location state
   useEffect(() => {
@@ -566,6 +568,16 @@ const GamePage = () => {
     alert('Map view would show:\n- Your current location\n- Task locations (if unlocked)\n- Other players (for hunters)\n- Extraction point (when all tasks completed)');
   };
 
+  const handleViewTaskMap = (task: Task) => {
+    setSelectedTask(task);
+    setShowTaskMap(true);
+  };
+
+  const handleCloseTaskMap = () => {
+    setShowTaskMap(false);
+    setSelectedTask(null);
+  };
+
   const handleUpdateLocation = () => {
     if (!currentPlayer) return;
 
@@ -926,7 +938,18 @@ const GamePage = () => {
 
                 {task && (isCurrent || isCompleted) && (
                   <div className="mission-location">
-                    📍 {task.location.address}
+                    <div className="location-coordinates">
+                      📍 {task.location.latitude.toFixed(4)}, {task.location.longitude.toFixed(4)}
+                    </div>
+                    <button 
+                      className="view-map-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewTaskMap(task);
+                      }}
+                    >
+                      🗺️ View On Map
+                    </button>
                   </div>
                 )}
               </div>
@@ -1026,6 +1049,242 @@ const GamePage = () => {
           onClose={handleCloseQRScanner}
         />
       )}
+
+      {/* Task Map Modal */}
+      {showTaskMap && selectedTask && (
+        <div className="task-map-modal">
+          <div className="task-map-overlay" onClick={handleCloseTaskMap}></div>
+          <div className="task-map-content">
+            <div className="task-map-header">
+              <h3>🗺️ Mission {selectedTask.taskNumber} Location</h3>
+              <button className="close-map-btn" onClick={handleCloseTaskMap}>
+                ✕
+              </button>
+            </div>
+            <div className="task-map-body">
+              <div className="task-location-info">
+                <div className="location-coordinates">
+                  <strong>📍 Coordinates:</strong><br/>
+                  {selectedTask.location.latitude.toFixed(6)}, {selectedTask.location.longitude.toFixed(6)}
+                </div>
+                <div className="location-address">
+                  <strong>📍 Address:</strong><br/>
+                  {selectedTask.location.address}
+                </div>
+              </div>
+              <div className="map-placeholder">
+                <div className="map-icon">🗺️</div>
+                <div className="map-text">
+                  <strong>Interactive Map</strong><br/>
+                  Use your device's map app to navigate to:<br/>
+                  <code>{selectedTask.location.latitude.toFixed(6)}, {selectedTask.location.longitude.toFixed(6)}</code>
+                </div>
+                <div className="map-actions">
+                  <button 
+                    className="open-maps-btn"
+                    onClick={() => {
+                      const lat = selectedTask.location.latitude;
+                      const lng = selectedTask.location.longitude;
+                      const url = `https://www.google.com/maps?q=${lat},${lng}`;
+                      window.open(url, '_blank');
+                    }}
+                  >
+                    📱 Open in Google Maps
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .mission-location {
+          margin-top: 0.5rem;
+          padding: 0.5rem;
+          background: #f8f9fa;
+          border-radius: 6px;
+          border: 1px solid #dee2e6;
+        }
+
+        .location-coordinates {
+          font-family: monospace;
+          font-size: 0.9rem;
+          color: #495057;
+          margin-bottom: 0.5rem;
+        }
+
+        .view-map-btn {
+          background: #007bff;
+          color: white;
+          border: none;
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-size: 0.8rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .view-map-btn:hover {
+          background: #0056b3;
+        }
+
+        .task-map-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+        }
+
+        .task-map-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+        }
+
+        .task-map-content {
+          position: relative;
+          background: white;
+          border-radius: 12px;
+          max-width: 500px;
+          width: 100%;
+          max-height: 80vh;
+          overflow: hidden;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-50px) scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .task-map-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem;
+          background: #007bff;
+          color: white;
+        }
+
+        .task-map-header h3 {
+          margin: 0;
+          font-size: 1.2rem;
+        }
+
+        .close-map-btn {
+          background: none;
+          border: none;
+          color: white;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: background-color 0.2s;
+        }
+
+        .close-map-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .task-map-body {
+          padding: 1.5rem;
+        }
+
+        .task-location-info {
+          margin-bottom: 1.5rem;
+        }
+
+        .location-coordinates,
+        .location-address {
+          margin-bottom: 1rem;
+          padding: 0.75rem;
+          background: #f8f9fa;
+          border-radius: 6px;
+          border-left: 4px solid #007bff;
+        }
+
+        .location-coordinates strong,
+        .location-address strong {
+          color: #007bff;
+        }
+
+        .map-placeholder {
+          text-align: center;
+          padding: 2rem;
+          background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+          border-radius: 8px;
+          border: 2px dashed #dee2e6;
+        }
+
+        .map-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+
+        .map-text {
+          color: #495057;
+          margin-bottom: 1.5rem;
+          line-height: 1.5;
+        }
+
+        .map-text code {
+          background: #e9ecef;
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-family: monospace;
+          color: #007bff;
+          font-weight: bold;
+        }
+
+        .open-maps-btn {
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 0.75rem 1.5rem;
+          border-radius: 6px;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-weight: bold;
+        }
+
+        .open-maps-btn:hover {
+          background: #218838;
+        }
+
+        @media (max-width: 600px) {
+          .task-map-content {
+            margin: 0.5rem;
+            max-width: none;
+          }
+          
+          .task-map-body {
+            padding: 1rem;
+          }
+          
+          .map-placeholder {
+            padding: 1.5rem;
+          }
+        }
+      `}</style>
     </div>
   );
 };
